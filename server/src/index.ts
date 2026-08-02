@@ -10,7 +10,9 @@ import { childrenRouter } from './routes/children.js';
 import { eventsRouter } from './routes/events.js';
 import { feedsRouter } from './routes/feeds.js';
 import { calendarRouter } from './routes/calendar.js';
+import { digestRouter } from './routes/digest.js';
 import { syncAllFeeds } from './feeds/sync.js';
+import { startDigestScheduler } from './digest/scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +28,7 @@ app.use('/api/children', childrenRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/feeds', feedsRouter);
 app.use('/api/calendar', calendarRouter);
+app.use('/api/digest', digestRouter);
 
 // Serve the built web app in production. The frontend is a single-page app,
 // so any non-API route falls back to index.html.
@@ -51,3 +54,6 @@ const refreshMs = Math.max(5, config.feedRefreshMinutes) * 60_000;
 setInterval(() => {
   void syncAllFeeds();
 }, refreshMs);
+
+// Schedule the Sunday-morning email digest (no-op unless SMTP is configured).
+startDigestScheduler();

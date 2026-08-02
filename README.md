@@ -6,7 +6,10 @@ two things Google Calendar won't:
 1. **Merges several Google Calendars into one view.** Subscribe to each calendar using its
    secret iCal link and every event shows up together, color-coded by child.
 2. **Lets everyone add events.** Signed-in family members can add, edit, and delete shared
-   events right in the app.
+   events right in the app — including **weekly repeating events** (e.g. soccer every Monday
+   until the season ends) and **drag-to-reschedule**.
+3. **Emails a weekly digest.** Every Sunday morning everyone with an account gets an email
+   summarizing the upcoming week, notes and all.
 
 Built with TypeScript + React so it can grow into a real iOS/Android app later (see
 [Growing into a native app](#growing-into-a-native-app)).
@@ -17,8 +20,12 @@ Built with TypeScript + React so it can grow into a real iOS/Android app later (
 
 - A month / week / list calendar everyone can open on their phone or computer.
 - Each child gets a color; tap a name to hide or show just their events.
-- **+ Add event** for anything you enter by hand.
-- **⚙ Manage** to add people and subscribe to Google Calendars.
+- **+ Add event** for anything you enter by hand. Turn on **Repeat weekly** to make it recur
+  until a date you choose.
+- **Drag an event** to a new day or time, or drag its edge to change how long it lasts — it
+  saves automatically. (Repeating events and imported Google events aren't draggable; edit a
+  repeating series from its form.)
+- **⚙ Manage** to add people, subscribe to Google Calendars, and set up the weekly email.
 - Imported (Google) events are read-only; events you add here are fully editable.
 
 ---
@@ -79,6 +86,43 @@ Any of them just needs a mounted volume so the database survives restarts.
 | `INVITE_CODE` | Optional. If set, new accounts require this code. |
 | `FEED_REFRESH_MINUTES` | How often subscribed Google Calendars re-sync (default 30). |
 | `PORT` | Port to listen on (most hosts set this for you). |
+| `TIMEZONE` | Your timezone (e.g. `America/New_York`), for scheduling/formatting the digest. |
+| `APP_URL` | Public URL of your app, used for the button in the digest email. |
+| `DIGEST_CRON` | When to send the digest (cron format). Default `0 7 * * 0` = Sunday 7 AM. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` / `SMTP_SECURE` | Mail server for the weekly digest. Leave `SMTP_HOST` unset to turn email off. |
+
+---
+
+## Setting up the weekly email digest
+
+Every Sunday morning, everyone with an account gets an email listing the upcoming week's
+events — with each event's notes and location included. It's **off until you add a mail
+server**, so the app runs fine without it.
+
+The easiest option is a Gmail account with an **app password**:
+
+1. On the Google account you'll send from, turn on **2-Step Verification**
+   (Google Account → Security).
+2. Then go to **Security → App passwords**, create one for "Mail", and copy the 16-character
+   code.
+3. Set these where the app is hosted (e.g. Render → Environment):
+
+   ```
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_SECURE=false
+   SMTP_USER=you@gmail.com
+   SMTP_PASS=your-16-char-app-password
+   SMTP_FROM=Family Calendar <you@gmail.com>
+   TIMEZONE=America/New_York
+   APP_URL=https://your-app.onrender.com
+   ```
+
+4. Restart the app. In **⚙ Manage → Email digest** you can **Preview this week** and
+   **Send a test now** to confirm it works before Sunday.
+
+> Prefer not to use Gmail? Any SMTP provider works — services like Resend, SendGrid,
+> Mailgun, or Postmark give you the same `SMTP_*` values.
 
 ---
 
@@ -122,10 +166,12 @@ So nothing you build now is throwaway.
 
 ```
 family-planning/
-├─ server/      Express + SQLite API (auth, events, calendar feeds)
+├─ server/      Express + SQLite API (auth, events, calendar feeds, email digest)
 │  └─ src/
-│     ├─ routes/        auth, children, events, feeds, calendar
-│     └─ feeds/sync.ts  fetches & parses Google iCal feeds (incl. recurring events)
+│     ├─ routes/        auth, children, events, feeds, calendar, digest
+│     ├─ events/query.ts  merges local + feed events, expands weekly series
+│     ├─ feeds/sync.ts    fetches & parses Google iCal feeds (incl. recurring events)
+│     └─ digest/          builds & schedules the Sunday-morning email
 ├─ web/         React + Vite calendar app (FullCalendar)
 │  └─ src/
 │     ├─ pages/         Login, Signup, CalendarPage
@@ -140,3 +186,7 @@ family-planning/
 - **Auth:** email + password, hashed with bcrypt, sessions via signed JWT.
 - **Feeds:** parsed with `node-ical`; recurring events (e.g. weekly practice) are expanded
   into individual occurrences, and cancellations/edits to single occurrences are respected.
+- **Recurrence:** locally-added weekly events are stored once and expanded on read, so a
+  season of practices is a single row you can edit or delete in one place.
+- **Email:** sent with `nodemailer` over SMTP; scheduled with `node-cron` in your timezone.
+  Recipients are BCC'd so family email addresses stay private from each other.

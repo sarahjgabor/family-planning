@@ -4,7 +4,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
-import type { EventClickArg, DateSelectArg, EventInput } from '@fullcalendar/core';
+import type { EventClickArg, DateSelectArg, EventInput, EventChangeArg } from '@fullcalendar/core';
 import { useAuth } from '../auth';
 import { api, type Child, type CalendarEvent } from '../api';
 import { EventModal, type EditableEvent } from '../components/EventModal';
@@ -60,7 +60,9 @@ export function CalendarPage() {
             end: e.end ?? undefined,
             allDay: e.allDay,
             color: e.color,
-            editable: e.editable,
+            // Recurring events aren't draggable — moving one occurrence of a
+            // series is ambiguous, so edits go through the form instead.
+            editable: e.editable && !e.recurring,
             extendedProps: e.extendedProps,
           }));
         success(mapped);
@@ -71,22 +73,21 @@ export function CalendarPage() {
     [],
   );
 
-  function onEventClick(arg: EventClickArg) {
+  async function onEventClick(arg: EventClickArg) {
     const props = arg.event.extendedProps as CalendarEvent['extendedProps'];
     if (props.source === 'local') {
-      const numericId = Number(arg.event.id.replace('local-', ''));
-      setEditing({
-        id: numericId,
-        title: arg.event.title,
-        childId: props.childId,
-        startAt: arg.event.startStr,
-        endAt: arg.event.endStr || null,
-        allDay: arg.event.allDay,
-        location: props.location,
-        notes: props.notes,
-      });
-      setCreatingAt(null);
-      setShowEventModal(true);
+      // Load the master row so edits (including recurring series) apply to the
+      // whole event rather than a single shifted occurrence.
+      const masterId = parseInt(arg.event.id.slice('local-'.length), 10);
+      try {
+        const master = await api.get<EditableEvent>(`/events/${masterId}`);
+        setEditing(master);
+        setCreatingAt(null);
+        setShowEventModal(true);
+      } catch {
+        /* event may have just been deleted elsewhere; refetch to stay in sync */
+        refetch();
+      }
     } else {
       // Imported events are read-only; show their details.
       setDetail({
@@ -97,6 +98,7 @@ export function CalendarPage() {
         allDay: arg.event.allDay,
         color: arg.event.backgroundColor,
         editable: false,
+        recurring: false,
         extendedProps: props,
       });
     }
@@ -107,6 +109,25 @@ export function CalendarPage() {
     setCreatingAt(arg.startStr);
     setShowEventModal(true);
     calendarRef.current?.getApi().unselect();
+  }
+
+  // Fired when an event is dragged to a new time or resized. Only local,
+  // non-recurring events are draggable, so we just persist the new schedule.
+  async function onEventChange(arg: EventChangeArg) {
+    const ev = arg.event;
+    const props = ev.extendedProps as CalendarEvent['extendedProps'];
+    if (props.source !== 'local' || props.recurrence) {
+      arg.revert();
+      return;
+    }
+    const id = parseInt(ev.id.slice('local-'.length), 10);
+    const startAt = ev.allDay ? ev.startStr.slice(0, 10) : ev.start!.toISOString();
+    const endAt = ev.end ? (ev.allDay ? ev.endStr.slice(0, 10) : ev.end.toISOString()) : null;
+    try {
+      await api.patch(`/events/${id}/move`, { startAt, endAt, allDay: ev.allDay });
+    } catch {
+      arg.revert();
+    }
   }
 
   function toggleFilter(key: string) {
@@ -211,11 +232,15 @@ export function CalendarPage() {
           height="auto"
           selectable
           selectMirror
+          editable
+          eventStartEditable
+          eventDurationEditable
           dayMaxEvents
           nowIndicator
           events={fetchEvents}
           eventClick={onEventClick}
           select={onDateSelect}
+          eventChange={onEventChange}
         />
       </main>
 

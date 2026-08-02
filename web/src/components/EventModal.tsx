@@ -10,6 +10,8 @@ export interface EditableEvent {
   allDay: boolean;
   location: string | null;
   notes: string | null;
+  recurrence: 'weekly' | null;
+  recurrenceUntil: string | null;
 }
 
 interface Props {
@@ -41,6 +43,8 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
   const [end, setEnd] = useState('');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
+  const [repeatWeekly, setRepeatWeekly] = useState(false);
+  const [repeatUntil, setRepeatUntil] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -53,6 +57,8 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
       setEnd(toInputValue(event.endAt, event.allDay));
       setLocation(event.location ?? '');
       setNotes(event.notes ?? '');
+      setRepeatWeekly(event.recurrence === 'weekly');
+      setRepeatUntil(event.recurrenceUntil ?? '');
     } else if (initialStart) {
       const isDateOnly = initialStart.length <= 10;
       setAllDay(isDateOnly);
@@ -65,6 +71,10 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
     setError(null);
     if (!start) {
       setError('Please pick a start date/time');
+      return;
+    }
+    if (repeatWeekly && !repeatUntil) {
+      setError('Choose the date the weekly repeat should stop');
       return;
     }
     setBusy(true);
@@ -81,6 +91,8 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
       allDay,
       location: location.trim() || null,
       notes: notes.trim() || null,
+      recurrence: repeatWeekly ? ('weekly' as const) : null,
+      recurrenceUntil: repeatWeekly ? repeatUntil : null,
     };
 
     try {
@@ -99,7 +111,9 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
 
   async function onDelete() {
     if (!event) return;
-    if (!confirm('Delete this event?')) return;
+    const message =
+      event.recurrence === 'weekly' ? 'Delete this entire weekly series?' : 'Delete this event?';
+    if (!confirm(message)) return;
     setBusy(true);
     try {
       await api.del(`/events/${event.id}`);
@@ -167,6 +181,18 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
           Notes <span className="hint">(optional)</span>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
         </label>
+
+        <label className="checkbox">
+          <input type="checkbox" checked={repeatWeekly} onChange={(e) => setRepeatWeekly(e.target.checked)} />
+          Repeat weekly
+        </label>
+        {repeatWeekly && (
+          <label>
+            Repeat every week until
+            <input type="date" value={repeatUntil} onChange={(e) => setRepeatUntil(e.target.value)} required />
+            <span className="hint">Edits and deletes apply to the whole series.</span>
+          </label>
+        )}
 
         <div className="modal-actions">
           {event && (

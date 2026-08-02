@@ -14,6 +14,8 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
+const smtpHost = process.env.SMTP_HOST?.trim() || null;
+
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   databasePath: process.env.DATABASE_PATH ?? path.resolve(__dirname, '../../data/family.sqlite'),
@@ -21,4 +23,26 @@ export const config = {
   inviteCode: process.env.INVITE_CODE?.trim() || null,
   feedRefreshMinutes: Number(process.env.FEED_REFRESH_MINUTES ?? 30),
   isProduction: process.env.NODE_ENV === 'production',
+
+  // Public URL of the deployed app, used for the link in the digest email.
+  appUrl: process.env.APP_URL?.replace(/\/$/, '') || null,
+
+  // Timezone the weekly digest is scheduled and formatted in (IANA name,
+  // e.g. "America/New_York"). Defaults to UTC.
+  timezone: process.env.TIMEZONE?.trim() || 'UTC',
+
+  // Weekly email digest. Only runs when SMTP is configured. The cron
+  // expression defaults to 7:00 AM every Sunday in the configured timezone.
+  digestCron: process.env.DIGEST_CRON?.trim() || '0 7 * * 0',
+
+  smtp: smtpHost
+    ? {
+        host: smtpHost,
+        port: Number(process.env.SMTP_PORT ?? 587),
+        secure: process.env.SMTP_SECURE === 'true',
+        user: process.env.SMTP_USER?.trim() || undefined,
+        pass: process.env.SMTP_PASS || undefined,
+        from: process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim() || 'family-calendar@localhost',
+      }
+    : null,
 };

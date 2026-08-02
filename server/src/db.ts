@@ -35,17 +35,19 @@ export function migrate(): void {
 
     -- Events added directly inside the app (as opposed to imported feeds).
     CREATE TABLE IF NOT EXISTS events (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      title      TEXT NOT NULL,
-      child_id   INTEGER REFERENCES children(id) ON DELETE SET NULL,
-      start_at   TEXT NOT NULL,
-      end_at     TEXT,
-      all_day    INTEGER NOT NULL DEFAULT 0,
-      location   TEXT,
-      notes      TEXT,
-      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      title            TEXT NOT NULL,
+      child_id         INTEGER REFERENCES children(id) ON DELETE SET NULL,
+      start_at         TEXT NOT NULL,
+      end_at           TEXT,
+      all_day          INTEGER NOT NULL DEFAULT 0,
+      location         TEXT,
+      notes            TEXT,
+      recurrence       TEXT,             -- NULL for one-off, 'weekly' for a repeating series
+      recurrence_until TEXT,             -- YYYY-MM-DD the weekly series repeats through (inclusive)
+      created_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     -- Subscribed external calendars (e.g. Google Calendar secret iCal URLs).
@@ -78,4 +80,17 @@ export function migrate(): void {
     CREATE INDEX IF NOT EXISTS idx_feed_events_feed ON feed_events(feed_id);
     CREATE INDEX IF NOT EXISTS idx_feed_events_start ON feed_events(start_at);
   `);
+
+  // Add columns introduced after the first release, for databases that were
+  // created before these features existed. Safe to run every startup.
+  ensureColumn('events', 'recurrence', 'TEXT');
+  ensureColumn('events', 'recurrence_until', 'TEXT');
+}
+
+/** Add a column to a table only if it isn't already present. */
+function ensureColumn(table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }

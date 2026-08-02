@@ -9,7 +9,7 @@ interface Props {
 const SWATCHES = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#64748b'];
 
 export function ManageModal({ onClose, onChanged }: Props) {
-  const [tab, setTab] = useState<'people' | 'calendars'>('people');
+  const [tab, setTab] = useState<'people' | 'calendars' | 'digest'>('people');
   const [children, setChildren] = useState<Child[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
 
@@ -38,17 +38,18 @@ export function ManageModal({ onClose, onChanged }: Props) {
           <button className={tab === 'calendars' ? 'tab active' : 'tab'} onClick={() => setTab('calendars')}>
             Subscribed calendars
           </button>
+          <button className={tab === 'digest' ? 'tab active' : 'tab'} onClick={() => setTab('digest')}>
+            Email digest
+          </button>
           <div className="spacer" />
           <button className="btn" onClick={onClose}>
             Done
           </button>
         </div>
 
-        {tab === 'people' ? (
-          <PeopleTab children={children} onChanged={afterChange} />
-        ) : (
-          <CalendarsTab feeds={feeds} children={children} onChanged={afterChange} />
-        )}
+        {tab === 'people' && <PeopleTab children={children} onChanged={afterChange} />}
+        {tab === 'calendars' && <CalendarsTab feeds={feeds} children={children} onChanged={afterChange} />}
+        {tab === 'digest' && <DigestTab />}
       </div>
     </div>
   );
@@ -244,6 +245,89 @@ function CalendarsTab({
           {busy ? 'Adding…' : 'Subscribe'}
         </button>
       </div>
+    </div>
+  );
+}
+
+interface DigestStatus {
+  emailConfigured: boolean;
+  timezone: string;
+  schedule: string;
+}
+
+function DigestTab() {
+  const [status, setStatus] = useState<DigestStatus | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get<DigestStatus>('/digest/status').then(setStatus).catch(() => {});
+  }, []);
+
+  async function showPreview() {
+    setError(null);
+    try {
+      const res = await api.get<{ html: string }>('/digest/preview');
+      setPreview(res.html);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not build preview');
+    }
+  }
+
+  async function sendTest() {
+    setError(null);
+    setMessage(null);
+    setBusy(true);
+    try {
+      const res = await api.post<{ sent: number }>('/digest/send-test');
+      setMessage(`Sent to ${res.sent} recipient(s). Check your inbox.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send email');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="tab-body">
+      <p className="muted">
+        A summary of the upcoming week — including any notes on each event — goes out to everyone with an account,
+        every <strong>Sunday morning</strong>.
+      </p>
+
+      {status && !status.emailConfigured && (
+        <div className="alert">
+          Email isn't set up yet. Add these settings where the app is hosted, then restart it:
+          <code className="env-block">
+            SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+            <br />
+            TIMEZONE (e.g. America/New_York)
+          </code>
+          A Gmail account with an “app password” works well. See the README for step-by-step help.
+        </div>
+      )}
+
+      {status?.emailConfigured && (
+        <p className="muted small">
+          ✅ Email is set up. Sending on schedule <code>{status.schedule}</code> in <strong>{status.timezone}</strong>.
+        </p>
+      )}
+
+      {message && <div className="notice">{message}</div>}
+      {error && <div className="alert">{error}</div>}
+
+      <div className="add-row">
+        <button className="btn" onClick={showPreview}>
+          Preview this week
+        </button>
+        <button className="btn primary" onClick={sendTest} disabled={busy || !status?.emailConfigured}>
+          {busy ? 'Sending…' : 'Send a test now'}
+        </button>
+      </div>
+
+      {preview && <iframe className="digest-preview" title="Digest preview" srcDoc={preview} />}
     </div>
   );
 }
