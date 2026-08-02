@@ -1,0 +1,19 @@
+{
+  "name": "family-planning",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A shared family activity calendar that merges Google Calendar feeds and lets the whole household add events.",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace server & npm run dev --workspace web",
+    "build": "npm run build --workspace web && npm run build --workspace server",
+    "start": "npm run start --workspace server",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web"
+  }
+}

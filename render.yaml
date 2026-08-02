@@ -1,0 +1,24 @@
+# One-click deploy blueprint for Render (https://render.com).
+# In Render: New → Blueprint → connect this repo. Render reads this file.
+services:
+  - type: web
+    name: family-calendar
+    runtime: node
+    plan: starter # has a persistent disk; the free plan does not persist data
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: /data/family.sqlite
+      - key: JWT_SECRET
+        generateValue: true # Render generates a strong random secret
+      - key: INVITE_CODE
+        sync: false # set your own in the dashboard (optional)
+      - key: FEED_REFRESH_MINUTES
+        value: "30"
+    disk:
+      name: family-data
+      mountPath: /data
+      sizeGB: 1

@@ -1,0 +1,166 @@
+import ical from 'node-ical';
+import { db } from '../db.js';
+
+// How far back / forward we expand recurring events when caching them.
+// A family activity calendar rarely needs more than this, and each sync
+// re-expands against the current date so the window stays fresh.
+const PAST_WINDOW_DAYS = 90;
+const FUTURE_WINDOW_DAYS = 400;
+
+interface ParsedEvent {
+  uid: string;
+  title: string;
+  startAt: string;
+  endAt: string | null;
+  allDay: boolean;
+  location: string | null;
+  description: string | null;
+}
+
+function isAllDay(date: unknown): boolean {
+  return Boolean(date && typeof date === 'object' && (date as { dateOnly?: boolean }).dateOnly);
+}
+
+/** Format a Date for storage: date-only for all-day, full ISO otherwise. */
+function formatDate(date: Date, allDay: boolean): string {
+  if (allDay) {
+    return date.toISOString().slice(0, 10); // YYYY-MM-DD
+  }
+  return date.toISOString();
+}
+
+/**
+ * Expand a single VEVENT (which may be recurring) into concrete occurrences
+ * that fall within [windowStart, windowEnd].
+ */
+function expandEvent(event: ical.VEvent, windowStart: Date, windowEnd: Date): ParsedEvent[] {
+  const results: ParsedEvent[] = [];
+  const allDay = isAllDay(event.start);
+  const baseStart = event.start as Date;
+  const baseEnd = (event.end as Date) ?? null;
+  const durationMs = baseEnd ? baseEnd.getTime() - baseStart.getTime() : 0;
+
+  const title = event.summary?.toString() ?? '(untitled)';
+  const location = event.location?.toString() || null;
+  const description = event.description?.toString() || null;
+
+  // Non-recurring: a single occurrence.
+  if (!event.rrule) {
+    if (baseStart >= windowStart && baseStart <= windowEnd) {
+      results.push({
+        uid: event.uid ?? `${title}-${baseStart.toISOString()}`,
+        title,
+        startAt: formatDate(baseStart, allDay),
+        endAt: baseEnd ? formatDate(baseEnd, allDay) : null,
+        allDay,
+        location,
+        description,
+      });
+    }
+    return results;
+  }
+
+  // Recurring: expand occurrences within the window.
+  const exdates: Record<string, Date> = (event.exdate as Record<string, Date>) ?? {};
+  const overrides: Record<string, ical.VEvent> = (event.recurrences as Record<string, ical.VEvent>) ?? {};
+
+  const occurrences = event.rrule.between(windowStart, windowEnd, true);
+  for (const occurrence of occurrences) {
+    const dateKey = occurrence.toISOString().slice(0, 10);
+
+    // Skip cancelled occurrences (EXDATE).
+    if (exdates[dateKey]) continue;
+
+    // Apply a modified occurrence (RECURRENCE-ID override) if present.
+    const override = overrides[dateKey];
+    if (override) {
+      const oStart = override.start as Date;
+      const oEnd = (override.end as Date) ?? null;
+      const oAllDay = isAllDay(override.start);
+      results.push({
+        uid: `${event.uid}-${dateKey}`,
+        title: override.summary?.toString() ?? title,
+        startAt: formatDate(oStart, oAllDay),
+        endAt: oEnd ? formatDate(oEnd, oAllDay) : null,
+        allDay: oAllDay,
+        location: override.location?.toString() || location,
+        description: override.description?.toString() || description,
+      });
+      continue;
+    }
+
+    const occStart = occurrence;
+    const occEnd = durationMs ? new Date(occStart.getTime() + durationMs) : null;
+    results.push({
+      uid: `${event.uid}-${dateKey}`,
+      title,
+      startAt: formatDate(occStart, allDay),
+      endAt: occEnd ? formatDate(occEnd, allDay) : null,
+      allDay,
+      location,
+      description,
+    });
+  }
+  return results;
+}
+
+const replaceEvents = db.transaction((feedId: number, events: ParsedEvent[]) => {
+  db.prepare('DELETE FROM feed_events WHERE feed_id = ?').run(feedId);
+  const insert = db.prepare(`
+    INSERT INTO feed_events (feed_id, uid, title, start_at, end_at, all_day, location, description)
+    VALUES (@feedId, @uid, @title, @startAt, @endAt, @allDay, @location, @description)
+  `);
+  for (const e of events) {
+    insert.run({
+      feedId,
+      uid: e.uid,
+      title: e.title,
+      startAt: e.startAt,
+      endAt: e.endAt,
+      allDay: e.allDay ? 1 : 0,
+      location: e.location,
+      description: e.description,
+    });
+  }
+});
+
+/**
+ * Fetch a single feed's iCal URL, parse it, expand recurrences, and replace
+ * the cached feed_events for that feed. Records success/error on the feed row.
+ */
+export async function syncFeed(feed: { id: number; url: string }): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - PAST_WINDOW_DAYS * 86_400_000);
+  const windowEnd = new Date(now.getTime() + FUTURE_WINDOW_DAYS * 86_400_000);
+
+  try {
+    // Google's "secret address in iCal format" is served over https; some
+    // hosts use webcal:// — normalize that to https for fetching.
+    const url = feed.url.replace(/^webcal:\/\//i, 'https://');
+    const data = await ical.async.fromURL(url);
+
+    const parsed: ParsedEvent[] = [];
+    for (const key of Object.keys(data)) {
+      const component = data[key];
+      if (component.type === 'VEVENT') {
+        parsed.push(...expandEvent(component as ical.VEvent, windowStart, windowEnd));
+      }
+    }
+
+    replaceEvents(feed.id, parsed);
+    db.prepare('UPDATE feeds SET last_synced = datetime(\'now\'), last_error = NULL WHERE id = ?').run(feed.id);
+    return { ok: true, count: parsed.length };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    db.prepare('UPDATE feeds SET last_error = ? WHERE id = ?').run(message, feed.id);
+    return { ok: false, error: message };
+  }
+}
+
+/** Sync every subscribed feed. Used by the scheduler and manual refresh. */
+export async function syncAllFeeds(): Promise<void> {
+  const feeds = db.prepare('SELECT id, url FROM feeds').all() as { id: number; url: string }[];
+  for (const feed of feeds) {
+    await syncFeed(feed);
+  }
+}

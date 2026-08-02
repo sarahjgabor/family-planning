@@ -1,0 +1,98 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { db } from '../db.js';
+import { requireAuth } from '../auth.js';
+import { syncFeed, syncAllFeeds } from '../feeds/sync.js';
+
+export const feedsRouter = Router();
+feedsRouter.use(requireAuth);
+
+const feedSchema = z.object({
+  label: z.string().trim().min(1, 'Give this calendar a name').max(120),
+  url: z
+    .string()
+    .trim()
+    .refine(
+      (u) => /^(https?|webcal):\/\//i.test(u),
+      'Enter the calendar\'s iCal URL (starts with https:// or webcal://)',
+    ),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a hex value like #10b981')
+    .default('#10b981'),
+  childId: z.number().int().nullable().optional(),
+});
+
+feedsRouter.get('/', (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT f.id, f.label, f.url, f.color, f.child_id AS childId, f.last_synced AS lastSynced,
+              f.last_error AS lastError,
+              (SELECT COUNT(*) FROM feed_events fe WHERE fe.feed_id = f.id) AS eventCount
+       FROM feeds f ORDER BY f.label`,
+    )
+    .all();
+  res.json(rows);
+});
+
+feedsRouter.post('/', async (req, res) => {
+  const parsed = feedSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+    return;
+  }
+  const { label, url, color, childId } = parsed.data;
+  const result = db
+    .prepare('INSERT INTO feeds (label, url, color, child_id, created_by) VALUES (?, ?, ?, ?, ?)')
+    .run(label, url, color, childId ?? null, req.user!.id);
+
+  const id = Number(result.lastInsertRowid);
+  // Sync immediately so events show up right away. Report the outcome so the
+  // UI can warn if the URL was wrong.
+  const sync = await syncFeed({ id, url });
+  res.status(201).json({ id, sync });
+});
+
+feedsRouter.put('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const parsed = feedSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+    return;
+  }
+  const { label, url, color, childId } = parsed.data;
+  const result = db
+    .prepare('UPDATE feeds SET label = ?, url = ?, color = ?, child_id = ? WHERE id = ?')
+    .run(label, url, color, childId ?? null, id);
+  if (result.changes === 0) {
+    res.status(404).json({ error: 'Calendar not found' });
+    return;
+  }
+  res.json({ id });
+});
+
+feedsRouter.delete('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  db.prepare('DELETE FROM feeds WHERE id = ?').run(id);
+  res.status(204).end();
+});
+
+// Manually refresh a single feed.
+feedsRouter.post('/:id/refresh', async (req, res) => {
+  const id = Number(req.params.id);
+  const feed = db.prepare('SELECT id, url FROM feeds WHERE id = ?').get(id) as
+    | { id: number; url: string }
+    | undefined;
+  if (!feed) {
+    res.status(404).json({ error: 'Calendar not found' });
+    return;
+  }
+  const sync = await syncFeed(feed);
+  res.json({ sync });
+});
+
+// Manually refresh every feed.
+feedsRouter.post('/refresh-all', async (_req, res) => {
+  await syncAllFeeds();
+  res.json({ ok: true });
+});
