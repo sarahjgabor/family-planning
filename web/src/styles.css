@@ -344,6 +344,31 @@ textarea:focus {
   flex: 1;
 }
 
+/* ---- Recurring-edit scope chooser ---- */
+.scope {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 12px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.scope legend {
+  font-weight: 600;
+  font-size: 14px;
+  padding: 0 6px;
+}
+.scope .radio {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.scope .radio input {
+  width: auto;
+}
+
 .detail-head {
   display: flex;
   align-items: center;

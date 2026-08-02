@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api, type Child } from '../api';
 
 export interface EditableEvent {
-  id: number;
+  id: number; // the master event's id
   title: string;
   childId: number | null;
   startAt: string;
@@ -12,7 +12,12 @@ export interface EditableEvent {
   notes: string | null;
   recurrence: 'weekly' | null;
   recurrenceUntil: string | null;
+  // Set when a single occurrence of a weekly series was opened (YYYY-MM-DD of
+  // its original slot). Enables the "this / following / all" scope choice.
+  occurrenceDate?: string | null;
 }
+
+type Scope = 'single' | 'following' | 'all';
 
 interface Props {
   children: Child[];
@@ -45,8 +50,13 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
   const [notes, setNotes] = useState('');
   const [repeatWeekly, setRepeatWeekly] = useState(false);
   const [repeatUntil, setRepeatUntil] = useState('');
+  const [scope, setScope] = useState<Scope>('single');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // We're editing one occurrence of a repeating series when an occurrenceDate
+  // is present. That's when the scope choice ("this / following / all") applies.
+  const isOccurrence = Boolean(event && event.recurrence === 'weekly' && event.occurrenceDate);
 
   useEffect(() => {
     if (event) {
@@ -83,7 +93,7 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
     const startAt = allDay ? start.slice(0, 10) : new Date(start).toISOString();
     const endAt = end ? (allDay ? end.slice(0, 10) : new Date(end).toISOString()) : null;
 
-    const payload = {
+    const fields = {
       title,
       childId,
       startAt,
@@ -91,32 +101,65 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
       allDay,
       location: location.trim() || null,
       notes: notes.trim() || null,
-      recurrence: repeatWeekly ? ('weekly' as const) : null,
-      recurrenceUntil: repeatWeekly ? repeatUntil : null,
     };
 
     try {
-      if (event) {
-        await api.put(`/events/${event.id}`, payload);
+      if (isOccurrence && event) {
+        if (scope === 'all') {
+          // Edit the whole series: update the master, keeping the weekly rule.
+          await api.put(`/events/${event.id}`, {
+            ...fields,
+            recurrence: 'weekly',
+            recurrenceUntil: event.recurrenceUntil,
+          });
+        } else {
+          await api.put(`/events/${event.id}/occurrence`, {
+            ...fields,
+            occurrenceDate: event.occurrenceDate,
+            scope,
+          });
+        }
+      } else if (event) {
+        await api.put(`/events/${event.id}`, {
+          ...fields,
+          recurrence: repeatWeekly ? ('weekly' as const) : null,
+          recurrenceUntil: repeatWeekly ? repeatUntil : null,
+        });
       } else {
-        await api.post('/events', payload);
+        await api.post('/events', {
+          ...fields,
+          recurrence: repeatWeekly ? ('weekly' as const) : null,
+          recurrenceUntil: repeatWeekly ? repeatUntil : null,
+        });
       }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save event');
-    } finally {
       setBusy(false);
     }
   }
 
   async function onDelete() {
     if (!event) return;
-    const message =
-      event.recurrence === 'weekly' ? 'Delete this entire weekly series?' : 'Delete this event?';
+    let message = 'Delete this event?';
+    if (isOccurrence) {
+      message =
+        scope === 'all'
+          ? 'Delete the entire repeating series?'
+          : scope === 'following'
+            ? 'Delete this and all future occurrences?'
+            : 'Delete just this one occurrence?';
+    }
     if (!confirm(message)) return;
     setBusy(true);
     try {
-      await api.del(`/events/${event.id}`);
+      if (isOccurrence && event && scope !== 'all') {
+        await api.del(
+          `/events/${event.id}/occurrence?date=${event.occurrenceDate}&scope=${scope}`,
+        );
+      } else {
+        await api.del(`/events/${event.id}`);
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not delete event');
@@ -127,7 +170,7 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={onSubmit}>
-        <h2>{event ? 'Edit event' : 'Add event'}</h2>
+        <h2>{isOccurrence ? 'Edit repeating event' : event ? 'Edit event' : 'Add event'}</h2>
         {error && <div className="alert">{error}</div>}
 
         <label>
@@ -182,16 +225,44 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
         </label>
 
-        <label className="checkbox">
-          <input type="checkbox" checked={repeatWeekly} onChange={(e) => setRepeatWeekly(e.target.checked)} />
-          Repeat weekly
-        </label>
-        {repeatWeekly && (
-          <label>
-            Repeat every week until
-            <input type="date" value={repeatUntil} onChange={(e) => setRepeatUntil(e.target.value)} required />
-            <span className="hint">Edits and deletes apply to the whole series.</span>
-          </label>
+        {/* Series-level repeat controls: only when creating or editing a one-off. */}
+        {!isOccurrence && (
+          <>
+            <label className="checkbox">
+              <input type="checkbox" checked={repeatWeekly} onChange={(e) => setRepeatWeekly(e.target.checked)} />
+              Repeat weekly
+            </label>
+            {repeatWeekly && (
+              <label>
+                Repeat every week until
+                <input type="date" value={repeatUntil} onChange={(e) => setRepeatUntil(e.target.value)} required />
+              </label>
+            )}
+          </>
+        )}
+
+        {/* Scope choice when editing one occurrence of a repeating series. */}
+        {isOccurrence && (
+          <fieldset className="scope">
+            <legend>
+              Apply changes to
+              {event?.recurrenceUntil && (
+                <span className="hint"> · repeats weekly until {event.recurrenceUntil}</span>
+              )}
+            </legend>
+            <label className="radio">
+              <input type="radio" name="scope" checked={scope === 'single'} onChange={() => setScope('single')} />
+              This event only
+            </label>
+            <label className="radio">
+              <input type="radio" name="scope" checked={scope === 'following'} onChange={() => setScope('following')} />
+              This and following events
+            </label>
+            <label className="radio">
+              <input type="radio" name="scope" checked={scope === 'all'} onChange={() => setScope('all')} />
+              All events in the series
+            </label>
+          </fieldset>
         )}
 
         <div className="modal-actions">

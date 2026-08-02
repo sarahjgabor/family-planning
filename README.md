@@ -21,7 +21,9 @@ Built with TypeScript + React so it can grow into a real iOS/Android app later (
 - A month / week / list calendar everyone can open on their phone or computer.
 - Each child gets a color; tap a name to hide or show just their events.
 - **+ Add event** for anything you enter by hand. Turn on **Repeat weekly** to make it recur
-  until a date you choose.
+  until a date you choose. When you open one occurrence of a repeating event, you can apply
+  a change (or a delete) to **just that one**, **this and all following**, or **the whole
+  series** — so a one-week cancellation or a mid-season change is easy.
 - **Drag an event** to a new day or time, or drag its edge to change how long it lasts — it
   saves automatically. (Repeating events and imported Google events aren't draggable; edit a
   repeating series from its form.)
@@ -187,6 +189,8 @@ family-planning/
 - **Feeds:** parsed with `node-ical`; recurring events (e.g. weekly practice) are expanded
   into individual occurrences, and cancellations/edits to single occurrences are respected.
 - **Recurrence:** locally-added weekly events are stored once and expanded on read, so a
-  season of practices is a single row you can edit or delete in one place.
+  season of practices is a single row. Single-date changes are kept as lightweight
+  "overrides" (a cancelled date or a modified one), and "this and following" edits split the
+  series into two — the same model calendar apps use.
 - **Email:** sent with `nodemailer` over SMTP; scheduled with `node-cron` in your timezone.
   Recipients are BCC'd so family email addresses stay private from each other.

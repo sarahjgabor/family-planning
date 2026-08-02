@@ -76,9 +76,28 @@ export function migrate(): void {
       description TEXT
     );
 
+    -- Per-occurrence changes to a weekly series: a single date can be
+    -- cancelled (cancelled=1) or replaced with different details (cancelled=0
+    -- with override fields). Keyed by the occurrence's original slot date.
+    CREATE TABLE IF NOT EXISTS event_overrides (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      master_id  INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      occ_date   TEXT NOT NULL,                 -- original occurrence date, YYYY-MM-DD
+      cancelled  INTEGER NOT NULL DEFAULT 0,
+      title      TEXT,
+      child_id   INTEGER REFERENCES children(id) ON DELETE SET NULL,
+      start_at   TEXT,
+      end_at     TEXT,
+      all_day    INTEGER,
+      location   TEXT,
+      notes      TEXT,
+      UNIQUE(master_id, occ_date)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_at);
     CREATE INDEX IF NOT EXISTS idx_feed_events_feed ON feed_events(feed_id);
     CREATE INDEX IF NOT EXISTS idx_feed_events_start ON feed_events(start_at);
+    CREATE INDEX IF NOT EXISTS idx_overrides_master ON event_overrides(master_id);
   `);
 
   // Add columns introduced after the first release, for databases that were

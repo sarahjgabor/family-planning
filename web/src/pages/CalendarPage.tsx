@@ -73,21 +73,34 @@ export function CalendarPage() {
     [],
   );
 
-  async function onEventClick(arg: EventClickArg) {
+  function onEventClick(arg: EventClickArg) {
     const props = arg.event.extendedProps as CalendarEvent['extendedProps'];
     if (props.source === 'local') {
-      // Load the master row so edits (including recurring series) apply to the
-      // whole event rather than a single shifted occurrence.
-      const masterId = parseInt(arg.event.id.slice('local-'.length), 10);
-      try {
-        const master = await api.get<EditableEvent>(`/events/${masterId}`);
-        setEditing(master);
-        setCreatingAt(null);
-        setShowEventModal(true);
-      } catch {
-        /* event may have just been deleted elsewhere; refetch to stay in sync */
-        refetch();
-      }
+      // Event ids look like `local-<masterId>` or, for a series occurrence,
+      // `local-<masterId>-<YYYYMMDD>`. Parse both the master id and, when
+      // present, the occurrence's original slot date.
+      const parts = arg.event.id.split('-'); // ['local', masterId, maybeDate]
+      const masterId = parseInt(parts[1], 10);
+      const rawDate = parts[2];
+      const occurrenceDate =
+        rawDate && /^\d{8}$/.test(rawDate)
+          ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
+          : null;
+      setEditing({
+        id: masterId,
+        title: arg.event.title,
+        childId: props.childId,
+        startAt: arg.event.startStr,
+        endAt: arg.event.endStr || null,
+        allDay: arg.event.allDay,
+        location: props.location,
+        notes: props.notes,
+        recurrence: props.recurrence,
+        recurrenceUntil: props.recurrenceUntil,
+        occurrenceDate,
+      });
+      setCreatingAt(null);
+      setShowEventModal(true);
     } else {
       // Imported events are read-only; show their details.
       setDetail({

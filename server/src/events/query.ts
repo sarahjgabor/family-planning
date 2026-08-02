@@ -2,6 +2,7 @@ import { db } from '../db.js';
 
 const DEFAULT_LOCAL_COLOR = '#6366f1';
 const WEEK_MS = 7 * 86_400_000;
+const MAX_OCCURRENCES = 520; // safety cap (~10 years of weekly events)
 
 export interface MergedEvent {
   id: string;
@@ -39,6 +40,21 @@ interface LocalRow {
   child_color: string | null;
 }
 
+interface OverrideRow {
+  master_id: number;
+  occ_date: string;
+  cancelled: number;
+  title: string | null;
+  child_id: number | null;
+  start_at: string | null;
+  end_at: string | null;
+  all_day: number | null;
+  location: string | null;
+  notes: string | null;
+}
+
+type ChildMap = Map<number, { name: string; color: string }>;
+
 /** Add `weeks` weeks to an ISO datetime or a YYYY-MM-DD date, preserving format. */
 function addWeeks(value: string, weeks: number, allDay: boolean): string {
   if (allDay) {
@@ -50,72 +66,147 @@ function addWeeks(value: string, weeks: number, allDay: boolean): string {
   return new Date(new Date(value).getTime() + weeks * WEEK_MS).toISOString();
 }
 
+function overlaps(start: string, end: string | null, windowStart: string, windowEnd: string): boolean {
+  const effectiveEnd = end ?? start;
+  return start < windowEnd && effectiveEnd >= windowStart;
+}
+
 /**
  * Expand one local event into the occurrences that fall inside [start, end].
  * Non-recurring events yield at most one; weekly events yield each occurrence
- * from their start through recurrence_until (inclusive).
+ * from their start through recurrence_until, with per-date overrides applied
+ * (a cancelled date is skipped; a modified date uses the override's values).
  */
-function expandLocal(row: LocalRow, windowStart: string, windowEnd: string): MergedEvent[] {
+function expandLocal(
+  row: LocalRow,
+  overrides: Map<string, OverrideRow>,
+  childMap: ChildMap,
+  windowStart: string,
+  windowEnd: string,
+): MergedEvent[] {
   const allDay = Boolean(row.all_day);
-  const color = row.child_color ?? DEFAULT_LOCAL_COLOR;
-  const base: Omit<MergedEvent, 'id' | 'start' | 'end'> = {
-    title: row.title,
-    allDay,
+  const recurring = row.recurrence === 'weekly';
+
+  const makeEvent = (
+    idSuffix: string,
+    start: string,
+    end: string | null,
+    isAllDay: boolean,
+    fields: { title: string; childId: number | null; location: string | null; notes: string | null },
+    color: string,
+    childName: string | null,
+  ): MergedEvent => ({
+    id: idSuffix,
+    title: fields.title,
+    start,
+    end,
+    allDay: isAllDay,
     color,
     editable: true,
-    recurring: Boolean(row.recurrence),
+    recurring,
     extendedProps: {
       source: 'local',
-      childId: row.child_id,
-      childName: row.child_name,
-      location: row.location,
-      notes: row.notes,
+      childId: fields.childId,
+      childName,
+      location: fields.location,
+      notes: fields.notes,
       feedLabel: null,
-      recurrence: row.recurrence === 'weekly' ? 'weekly' : null,
+      recurrence: recurring ? 'weekly' : null,
       recurrenceUntil: row.recurrence_until,
     },
-  };
+  });
 
-  if (row.recurrence !== 'weekly' || !row.recurrence_until) {
-    // One-off event: include it if it overlaps the window.
-    const effectiveEnd = row.end_at ?? row.start_at;
-    if (row.start_at < windowEnd && effectiveEnd >= windowStart) {
-      return [{ ...base, id: `local-${row.id}`, start: row.start_at, end: row.end_at }];
+  // One-off event: include it if it overlaps the window.
+  if (!recurring || !row.recurrence_until) {
+    if (overlaps(row.start_at, row.end_at, windowStart, windowEnd)) {
+      return [
+        makeEvent(
+          `local-${row.id}`,
+          row.start_at,
+          row.end_at,
+          allDay,
+          { title: row.title, childId: row.child_id, location: row.location, notes: row.notes },
+          row.child_color ?? DEFAULT_LOCAL_COLOR,
+          row.child_name,
+        ),
+      ];
     }
     return [];
   }
 
-  // Weekly series: step from the start date one week at a time.
+  // Weekly series: step from the start one week at a time through the end date.
   const durationMs =
     !allDay && row.end_at ? new Date(row.end_at).getTime() - new Date(row.start_at).getTime() : 0;
   const untilExclusive = `${row.recurrence_until}T23:59:59.999Z`;
-  const occurrences: MergedEvent[] = [];
+  const results: MergedEvent[] = [];
 
-  for (let week = 0; week < 520; week++) {
-    const occStart = addWeeks(row.start_at, week, allDay);
-    if (occStart > untilExclusive) break;
-    if (occStart >= windowEnd) break;
+  for (let week = 0; week < MAX_OCCURRENCES; week++) {
+    const slotStart = addWeeks(row.start_at, week, allDay);
+    if (slotStart > untilExclusive) break;
 
-    let occEnd: string | null = null;
-    if (allDay) {
-      occEnd = row.end_at ? addWeeks(row.end_at, week, true) : null;
-    } else if (durationMs) {
-      occEnd = new Date(new Date(occStart).getTime() + durationMs).toISOString();
+    const slotDate = slotStart.slice(0, 10); // YYYY-MM-DD
+    const dateKey = slotDate.replace(/-/g, '');
+    const id = `local-${row.id}-${dateKey}`;
+    const override = overrides.get(slotDate);
+
+    if (override) {
+      if (override.cancelled) continue; // this occurrence was deleted
+
+      // Modified occurrence: use the override's values.
+      const ovAllDay = override.all_day === null ? allDay : Boolean(override.all_day);
+      const ovStart = override.start_at ?? slotStart;
+      const ovEnd = override.end_at ?? null;
+      const childId = override.child_id;
+      const child = childId != null ? childMap.get(childId) : undefined;
+      if (overlaps(ovStart, ovEnd, windowStart, windowEnd)) {
+        results.push(
+          makeEvent(
+            id,
+            ovStart,
+            ovEnd,
+            ovAllDay,
+            {
+              title: override.title ?? row.title,
+              childId,
+              location: override.location,
+              notes: override.notes,
+            },
+            child?.color ?? DEFAULT_LOCAL_COLOR,
+            child?.name ?? null,
+          ),
+        );
+      }
+      continue;
     }
 
-    const effectiveEnd = occEnd ?? occStart;
-    if (occStart < windowEnd && effectiveEnd >= windowStart) {
-      const dateKey = occStart.slice(0, 10).replace(/-/g, '');
-      occurrences.push({ ...base, id: `local-${row.id}-${dateKey}`, start: occStart, end: occEnd });
+    // Normal occurrence generated from the master.
+    let slotEnd: string | null = null;
+    if (allDay) {
+      slotEnd = row.end_at ? addWeeks(row.end_at, week, true) : null;
+    } else if (durationMs) {
+      slotEnd = new Date(new Date(slotStart).getTime() + durationMs).toISOString();
+    }
+    if (overlaps(slotStart, slotEnd, windowStart, windowEnd)) {
+      results.push(
+        makeEvent(
+          id,
+          slotStart,
+          slotEnd,
+          allDay,
+          { title: row.title, childId: row.child_id, location: row.location, notes: row.notes },
+          row.child_color ?? DEFAULT_LOCAL_COLOR,
+          row.child_name,
+        ),
+      );
     }
   }
-  return occurrences;
+  return results;
 }
 
 /**
- * Returns every event (locally-added, including expanded weekly series, plus
- * imported feed events) that overlaps [windowStart, windowEnd]. Shared by the
- * calendar API and the weekly email digest.
+ * Returns every event (locally-added, including expanded weekly series with
+ * per-occurrence overrides, plus imported feed events) that overlaps
+ * [windowStart, windowEnd]. Shared by the calendar API and the email digest.
  */
 export function getMergedEvents(windowStart: string, windowEnd: string): MergedEvent[] {
   // Local events: recurring series can start before the window, so we can't
@@ -133,9 +224,39 @@ export function getMergedEvents(windowStart: string, windowEnd: string): MergedE
     )
     .all({ start: windowStart, end: windowEnd }) as LocalRow[];
 
+  // Load overrides for the recurring masters in play, grouped by master -> date.
+  const recurringIds = localRows.filter((r) => r.recurrence === 'weekly').map((r) => r.id);
+  const overridesByMaster = new Map<number, Map<string, OverrideRow>>();
+  if (recurringIds.length > 0) {
+    const placeholders = recurringIds.map(() => '?').join(',');
+    const overrideRows = db
+      .prepare(`SELECT * FROM event_overrides WHERE master_id IN (${placeholders})`)
+      .all(...recurringIds) as OverrideRow[];
+    for (const ov of overrideRows) {
+      let map = overridesByMaster.get(ov.master_id);
+      if (!map) {
+        map = new Map();
+        overridesByMaster.set(ov.master_id, map);
+      }
+      map.set(ov.occ_date, ov);
+    }
+  }
+
+  // Child colors/names for resolving override child assignments.
+  const childMap: ChildMap = new Map();
+  for (const c of db.prepare('SELECT id, name, color FROM children').all() as {
+    id: number;
+    name: string;
+    color: string;
+  }[]) {
+    childMap.set(c.id, { name: c.name, color: c.color });
+  }
+
   const events: MergedEvent[] = [];
+  const emptyOverrides = new Map<string, OverrideRow>();
   for (const row of localRows) {
-    events.push(...expandLocal(row, windowStart, windowEnd));
+    const overrides = overridesByMaster.get(row.id) ?? emptyOverrides;
+    events.push(...expandLocal(row, overrides, childMap, windowStart, windowEnd));
   }
 
   const feedRows = db
