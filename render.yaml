@@ -5,7 +5,9 @@ services:
     name: family-calendar
     runtime: node
     plan: starter # has a persistent disk; the free plan does not persist data
-    buildCommand: npm install && npm run build
+    # --include=dev is required because NODE_ENV=production (below) otherwise
+    # makes npm skip devDependencies, which the build needs (tsc, vite, …).
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
