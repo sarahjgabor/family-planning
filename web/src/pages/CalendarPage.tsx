@@ -25,6 +25,14 @@ export function CalendarPage() {
   const [detail, setDetail] = useState<CalendarEvent | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Phones open in the scrolling List (agenda) view — easier to read on a
+  // small screen than a dense month grid. Decided once, on load.
+  const [initialView] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches
+      ? 'listWeek'
+      : 'dayGridMonth',
+  );
+
   const loadChildren = useCallback(() => {
     api.get<Child[]>('/children').then(setChildrenList).catch(() => {});
   }, []);
@@ -235,7 +243,7 @@ export function CalendarPage() {
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
+          initialView={initialView}
           headerToolbar={{
             left: 'prev,next today',
             center: 'title',
