@@ -96,3 +96,30 @@ feedsRouter.post('/refresh-all', async (_req, res) => {
   await syncAllFeeds();
   res.json({ ok: true });
 });
+
+// Assign (or clear) the child for a single imported event. Keyed by the
+// event's iCal UID so it survives feed re-syncs. childId null = "no one".
+const assignSchema = z.object({
+  uid: z.string().min(1),
+  childId: z.number().int().nullable(),
+});
+
+feedsRouter.put('/:id/assign', (req, res) => {
+  const feedId = Number(req.params.id);
+  const parsed = assignSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid assignment' });
+    return;
+  }
+  const feed = db.prepare('SELECT id FROM feeds WHERE id = ?').get(feedId);
+  if (!feed) {
+    res.status(404).json({ error: 'Calendar not found' });
+    return;
+  }
+  const { uid, childId } = parsed.data;
+  db.prepare(
+    `INSERT INTO feed_event_assignments (feed_id, uid, child_id) VALUES (?, ?, ?)
+     ON CONFLICT(feed_id, uid) DO UPDATE SET child_id = excluded.child_id`,
+  ).run(feedId, uid, childId);
+  res.json({ ok: true });
+});

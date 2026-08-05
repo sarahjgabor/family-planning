@@ -277,7 +277,14 @@ export function CalendarPage() {
         />
       )}
 
-      {detail && <DetailModal event={detail} onClose={() => setDetail(null)} />}
+      {detail && (
+        <DetailModal
+          event={detail}
+          children={childrenList}
+          onClose={() => setDetail(null)}
+          onChanged={refetch}
+        />
+      )}
     </div>
   );
 }
@@ -296,8 +303,35 @@ function formatWhen(event: CalendarEvent): string {
   return out;
 }
 
-function DetailModal({ event, onClose }: { event: CalendarEvent; onClose: () => void }) {
+function DetailModal({
+  event,
+  children,
+  onClose,
+  onChanged,
+}: {
+  event: CalendarEvent;
+  children: Child[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const p = event.extendedProps;
+  const [assignedChildId, setAssignedChildId] = useState<number | null>(p.childId);
+  const [saving, setSaving] = useState(false);
+  const canAssign = p.source === 'feed' && p.feedId != null && p.uid != null;
+
+  async function assign(childId: number | null) {
+    setAssignedChildId(childId);
+    setSaving(true);
+    try {
+      await api.put(`/feeds/${p.feedId}/assign`, { uid: p.uid, childId });
+      onChanged(); // recolor / refilter the calendar behind the modal
+    } catch {
+      setAssignedChildId(p.childId); // revert on failure
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -306,18 +340,39 @@ function DetailModal({ event, onClose }: { event: CalendarEvent; onClose: () => 
           <h2>{event.title}</h2>
         </div>
         <p className="detail-when">{formatWhen(event)}</p>
-        {p.childName && (
-          <p>
-            <strong>For:</strong> {p.childName}
-          </p>
-        )}
         {p.location && (
           <p>
             <strong>Where:</strong> {p.location}
           </p>
         )}
         {p.notes && <p className="detail-notes">{p.notes}</p>}
-        {p.feedLabel && <p className="muted small">From “{p.feedLabel}” (imported, read-only)</p>}
+
+        {canAssign ? (
+          <label>
+            Who is it for?
+            <select
+              value={assignedChildId ?? ''}
+              disabled={saving}
+              onChange={(e) => assign(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">— No one —</option>
+              {children.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <span className="hint">Assigning a child colors and filters this imported event.</span>
+          </label>
+        ) : (
+          p.childName && (
+            <p>
+              <strong>For:</strong> {p.childName}
+            </p>
+          )
+        )}
+
+        {p.feedLabel && <p className="muted small">From “{p.feedLabel}” (imported — details are read-only)</p>}
         <div className="modal-actions">
           <div className="spacer" />
           <button className="btn primary" onClick={onClose}>

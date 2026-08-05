@@ -89,5 +89,7 @@ export interface CalendarEvent {
     feedLabel: string | null;
     recurrence: 'weekly' | null;
     recurrenceUntil: string | null;
+    feedId: number | null;
+    uid: string | null;
   };
 }

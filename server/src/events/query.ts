@@ -22,6 +22,10 @@ export interface MergedEvent {
     feedLabel: string | null;
     recurrence: 'weekly' | null;
     recurrenceUntil: string | null;
+    // Present for imported (feed) events, so the client can assign a child to
+    // a specific one. Null for locally-added events.
+    feedId: number | null;
+    uid: string | null;
   };
 }
 
@@ -113,6 +117,8 @@ function expandLocal(
       feedLabel: null,
       recurrence: recurring ? 'weekly' : null,
       recurrenceUntil: row.recurrence_until,
+      feedId: null,
+      uid: null,
     },
   });
 
@@ -261,48 +267,61 @@ export function getMergedEvents(windowStart: string, windowEnd: string): MergedE
 
   const feedRows = db
     .prepare(
-      `SELECT fe.id, fe.title, fe.start_at, fe.end_at, fe.all_day, fe.location, fe.description,
-              f.label AS feed_label, f.color AS feed_color,
-              f.child_id, c.name AS child_name, c.color AS child_color
+      `SELECT fe.id, fe.uid, fe.title, fe.start_at, fe.end_at, fe.all_day, fe.location, fe.description,
+              f.id AS feed_id, f.label AS feed_label, f.color AS feed_color, f.child_id AS feed_child_id
        FROM feed_events fe
        JOIN feeds f ON f.id = fe.feed_id
-       LEFT JOIN children c ON c.id = f.child_id
        WHERE fe.start_at < @end AND COALESCE(fe.end_at, fe.start_at) >= @start`,
     )
     .all({ start: windowStart, end: windowEnd }) as Array<{
     id: number;
+    uid: string;
     title: string;
     start_at: string;
     end_at: string | null;
     all_day: number;
     location: string | null;
     description: string | null;
+    feed_id: number;
     feed_label: string;
     feed_color: string;
-    child_id: number | null;
-    child_name: string | null;
-    child_color: string | null;
+    feed_child_id: number | null;
   }>;
 
+  // Per-event child assignments, keyed "<feedId>:<uid>". A present key overrides
+  // the feed's default child (its value may be null for "explicitly no one").
+  const assignments = new Map<string, number | null>();
+  for (const a of db
+    .prepare('SELECT feed_id, uid, child_id FROM feed_event_assignments')
+    .all() as { feed_id: number; uid: string; child_id: number | null }[]) {
+    assignments.set(`${a.feed_id}:${a.uid}`, a.child_id);
+  }
+
   for (const r of feedRows) {
+    const key = `${r.feed_id}:${r.uid}`;
+    // The assigned child wins over the feed's default child.
+    const childId = assignments.has(key) ? assignments.get(key)! : r.feed_child_id;
+    const child = childId != null ? childMap.get(childId) : undefined;
     events.push({
       id: `feed-${r.id}`,
       title: r.title,
       start: r.start_at,
       end: r.end_at,
       allDay: Boolean(r.all_day),
-      color: r.child_color ?? r.feed_color,
+      color: child?.color ?? r.feed_color,
       editable: false,
       recurring: false,
       extendedProps: {
         source: 'feed',
-        childId: r.child_id,
-        childName: r.child_name,
+        childId: childId ?? null,
+        childName: child?.name ?? null,
         location: r.location,
         notes: r.description,
         feedLabel: r.feed_label,
         recurrence: null,
         recurrenceUntil: null,
+        feedId: r.feed_id,
+        uid: r.uid,
       },
     });
   }

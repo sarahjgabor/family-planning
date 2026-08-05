@@ -94,10 +94,23 @@ export function migrate(): void {
       UNIQUE(master_id, occ_date)
     );
 
+    -- A child assigned to a specific imported (feed) event. Keyed by the
+    -- event's stable iCal UID so the assignment survives feed re-syncs (which
+    -- replace the rows in feed_events). child_id NULL means "explicitly no one",
+    -- overriding any child assigned to the whole feed.
+    CREATE TABLE IF NOT EXISTS feed_event_assignments (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      feed_id  INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+      uid      TEXT NOT NULL,
+      child_id INTEGER REFERENCES children(id) ON DELETE CASCADE,
+      UNIQUE(feed_id, uid)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_at);
     CREATE INDEX IF NOT EXISTS idx_feed_events_feed ON feed_events(feed_id);
     CREATE INDEX IF NOT EXISTS idx_feed_events_start ON feed_events(start_at);
     CREATE INDEX IF NOT EXISTS idx_overrides_master ON event_overrides(master_id);
+    CREATE INDEX IF NOT EXISTS idx_feed_assignments ON feed_event_assignments(feed_id);
   `);
 
   // Add columns introduced after the first release, for databases that were
