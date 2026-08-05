@@ -1,5 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { api, type Child, type Feed } from '../api';
+
+/** A small "?" icon that reveals more detail on hover or keyboard focus. */
+function InfoTip({ children }: { children: ReactNode }) {
+  return (
+    <span className="infotip" tabIndex={0} role="button" aria-label="How to find this">
+      <span className="infotip-icon" aria-hidden="true">
+        ?
+      </span>
+      <span className="infotip-bubble" role="tooltip">
+        {children}
+      </span>
+    </span>
+  );
+}
 
 interface Props {
   onClose: () => void;
@@ -189,9 +203,7 @@ function CalendarsTab({
   return (
     <div className="tab-body">
       <p className="muted">
-        Subscribe to any Google Calendar using its <strong>secret iCal address</strong>. In Google Calendar:
-        Settings → pick the calendar → “Integrate calendar” → copy <em>Secret address in iCal format</em>, and paste it
-        below. All those calendars then show up here together.
+        Subscribe to any Google Calendar to see its events here — they'll all show up together.
       </p>
       {error && <div className="alert">{error}</div>}
 
@@ -223,7 +235,33 @@ function CalendarsTab({
 
       <div className="add-stack">
         <input placeholder="Name (e.g. Mia's school calendar)" value={label} onChange={(e) => setLabel(e.target.value)} />
-        <input placeholder="Secret iCal URL (https://…/basic.ics)" value={url} onChange={(e) => setUrl(e.target.value)} />
+        <div className="field-label">
+          <span>
+            Paste the calendar's <strong>secret iCal address</strong> below
+          </span>
+          <InfoTip>
+            <strong>Where to find it</strong>
+            <ol>
+              <li>Open Google Calendar on a computer.</li>
+              <li>
+                Hover the calendar in the left sidebar → <strong>⋮</strong> → <em>Settings and sharing</em>.
+              </li>
+              <li>
+                Scroll to <em>Integrate calendar</em>.
+              </li>
+              <li>
+                Copy <em>Secret address in iCal format</em> (it ends in <code>/basic.ics</code>).
+              </li>
+            </ol>
+            Don't use the “<code>?cid=</code>” link — that one just adds a calendar to your own Google account and
+            won't import here.
+          </InfoTip>
+        </div>
+        <input
+          placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
         <div className="row">
           <label className="grow">
             Assign to person <span className="hint">(optional)</span>
