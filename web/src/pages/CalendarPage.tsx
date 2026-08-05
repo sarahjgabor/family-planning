@@ -248,7 +248,9 @@ export function CalendarPage() {
           editable
           eventStartEditable
           eventDurationEditable
-          dayMaxEvents
+          dayMaxEvents={3}
+          moreLinkText={(n) => `+${n} more`}
+          eventTimeFormat={{ hour: 'numeric', minute: '2-digit', meridiem: 'narrow' }}
           nowIndicator
           events={fetchEvents}
           eventClick={onEventClick}

@@ -178,6 +178,10 @@ function CalendarsTab({
       });
       if (!res.sync.ok) {
         setError(`Added, but couldn't read that calendar: ${res.sync.error}`);
+      } else if (res.sync.count === 0) {
+        setError(
+          'Added, but that calendar returned 0 events. Make sure you used the secret iCal address (ending in /basic.ics), not the “?cid=” link.',
+        );
       }
       setLabel('');
       setUrl('');
@@ -214,13 +218,19 @@ function CalendarsTab({
             <span className="grow">
               <strong>{f.label}</strong>
               <br />
-              <span className="muted small">
-                {f.lastError
-                  ? `⚠️ ${f.lastError}`
-                  : f.lastSynced
-                    ? `${f.eventCount} events · updated ${new Date(f.lastSynced).toLocaleString()}`
-                    : 'Not synced yet'}
-              </span>
+              {f.lastError ? (
+                <span className="feed-warn small">⚠️ {f.lastError}</span>
+              ) : f.lastSynced && f.eventCount === 0 ? (
+                <span className="feed-warn small">
+                  ⚠️ Synced, but found 0 events — check you used the <em>secret iCal address</em>, not the “?cid=” link.
+                </span>
+              ) : f.lastSynced ? (
+                <span className="muted small">
+                  {f.eventCount} events · updated {new Date(f.lastSynced).toLocaleString()}
+                </span>
+              ) : (
+                <span className="muted small">Not synced yet</span>
+              )}
             </span>
             <button className="btn small" onClick={() => refresh(f.id)}>
               Refresh

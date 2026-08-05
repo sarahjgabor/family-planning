@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { syncFeed, syncAllFeeds } from '../feeds/sync.js';
+import { normalizeIcalUrl } from '../feeds/url.js';
 
 export const feedsRouter = Router();
 feedsRouter.use(requireAuth);
@@ -41,7 +42,8 @@ feedsRouter.post('/', async (req, res) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
     return;
   }
-  const { label, url, color, childId } = parsed.data;
+  const { label, color, childId } = parsed.data;
+  const url = normalizeIcalUrl(parsed.data.url);
   const result = db
     .prepare('INSERT INTO feeds (label, url, color, child_id, created_by) VALUES (?, ?, ?, ?, ?)')
     .run(label, url, color, childId ?? null, req.user!.id);
@@ -60,7 +62,8 @@ feedsRouter.put('/:id', (req, res) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
     return;
   }
-  const { label, url, color, childId } = parsed.data;
+  const { label, color, childId } = parsed.data;
+  const url = normalizeIcalUrl(parsed.data.url);
   const result = db
     .prepare('UPDATE feeds SET label = ?, url = ?, color = ?, child_id = ? WHERE id = ?')
     .run(label, url, color, childId ?? null, id);

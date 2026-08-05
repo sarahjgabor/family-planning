@@ -179,6 +179,10 @@ textarea:focus {
 .muted {
   color: var(--muted);
 }
+.feed-warn {
+  color: #b45309;
+  font-weight: 500;
+}
 .small {
   font-size: 13px;
 }
@@ -290,8 +294,39 @@ textarea:focus {
   border: none;
   padding: 1px 3px;
 }
+/* Keep each event to a single tidy line in the month grid. */
 .fc-daygrid-event {
-  white-space: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+/* The dotted timed-event titles default to bold, which reads heavy when a day
+   has many of them — soften to medium weight. */
+.fc .fc-daygrid-dot-event .fc-event-title {
+  font-weight: 500;
+}
+.fc .fc-daygrid-dot-event {
+  padding: 1px 4px;
+}
+/* "+N more" link. */
+.fc .fc-daygrid-more-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-top: 1px;
+}
+/* Popover that lists a day's full set of events when "+N more" is clicked. */
+.fc .fc-popover {
+  border: none;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.fc .fc-popover-header {
+  background: #eef2ff;
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* ---- Modal ---- */
