@@ -372,7 +372,9 @@ function DetailModal({
                 </option>
               ))}
             </select>
-            <span className="hint">Assigning a child colors and filters this imported event.</span>
+            <span className="hint">
+              Colors and filters this imported event. For a repeating event, it applies to the whole series.
+            </span>
           </label>
         ) : (
           p.childName && (

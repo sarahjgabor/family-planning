@@ -267,7 +267,8 @@ export function getMergedEvents(windowStart: string, windowEnd: string): MergedE
 
   const feedRows = db
     .prepare(
-      `SELECT fe.id, fe.uid, fe.title, fe.start_at, fe.end_at, fe.all_day, fe.location, fe.description,
+      `SELECT fe.id, COALESCE(fe.series_uid, fe.uid) AS uid,
+              fe.title, fe.start_at, fe.end_at, fe.all_day, fe.location, fe.description,
               f.id AS feed_id, f.label AS feed_label, f.color AS feed_color, f.child_id AS feed_child_id
        FROM feed_events fe
        JOIN feeds f ON f.id = fe.feed_id

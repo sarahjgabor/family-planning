@@ -68,6 +68,7 @@ export function migrate(): void {
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       feed_id     INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
       uid         TEXT NOT NULL,
+      series_uid  TEXT,          -- base UID shared by every occurrence of a series
       title       TEXT NOT NULL,
       start_at    TEXT NOT NULL,
       end_at      TEXT,
@@ -117,6 +118,7 @@ export function migrate(): void {
   // created before these features existed. Safe to run every startup.
   ensureColumn('events', 'recurrence', 'TEXT');
   ensureColumn('events', 'recurrence_until', 'TEXT');
+  ensureColumn('feed_events', 'series_uid', 'TEXT');
 }
 
 /** Add a column to a table only if it isn't already present. */

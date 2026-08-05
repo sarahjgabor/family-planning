@@ -9,6 +9,10 @@ const FUTURE_WINDOW_DAYS = 400;
 
 interface ParsedEvent {
   uid: string;
+  // The base iCal UID shared by every occurrence of a series (equal to uid for
+  // non-recurring events). Per-event child assignments are keyed on this so
+  // assigning one occurrence of a repeat applies to the whole series.
+  seriesUid: string;
   title: string;
   startAt: string;
   endAt: string | null;
@@ -43,12 +47,14 @@ function expandEvent(event: ical.VEvent, windowStart: Date, windowEnd: Date): Pa
   const title = event.summary?.toString() ?? '(untitled)';
   const location = event.location?.toString() || null;
   const description = event.description?.toString() || null;
+  const seriesUid = event.uid ?? `${title}-${baseStart.toISOString()}`;
 
   // Non-recurring: a single occurrence.
   if (!event.rrule) {
     if (baseStart >= windowStart && baseStart <= windowEnd) {
       results.push({
-        uid: event.uid ?? `${title}-${baseStart.toISOString()}`,
+        uid: seriesUid,
+        seriesUid,
         title,
         startAt: formatDate(baseStart, allDay),
         endAt: baseEnd ? formatDate(baseEnd, allDay) : null,
@@ -78,7 +84,8 @@ function expandEvent(event: ical.VEvent, windowStart: Date, windowEnd: Date): Pa
       const oEnd = (override.end as Date) ?? null;
       const oAllDay = isAllDay(override.start);
       results.push({
-        uid: `${event.uid}-${dateKey}`,
+        uid: `${seriesUid}-${dateKey}`,
+        seriesUid,
         title: override.summary?.toString() ?? title,
         startAt: formatDate(oStart, oAllDay),
         endAt: oEnd ? formatDate(oEnd, oAllDay) : null,
@@ -92,7 +99,8 @@ function expandEvent(event: ical.VEvent, windowStart: Date, windowEnd: Date): Pa
     const occStart = occurrence;
     const occEnd = durationMs ? new Date(occStart.getTime() + durationMs) : null;
     results.push({
-      uid: `${event.uid}-${dateKey}`,
+      uid: `${seriesUid}-${dateKey}`,
+      seriesUid,
       title,
       startAt: formatDate(occStart, allDay),
       endAt: occEnd ? formatDate(occEnd, allDay) : null,
@@ -107,13 +115,14 @@ function expandEvent(event: ical.VEvent, windowStart: Date, windowEnd: Date): Pa
 const replaceEvents = db.transaction((feedId: number, events: ParsedEvent[]) => {
   db.prepare('DELETE FROM feed_events WHERE feed_id = ?').run(feedId);
   const insert = db.prepare(`
-    INSERT INTO feed_events (feed_id, uid, title, start_at, end_at, all_day, location, description)
-    VALUES (@feedId, @uid, @title, @startAt, @endAt, @allDay, @location, @description)
+    INSERT INTO feed_events (feed_id, uid, series_uid, title, start_at, end_at, all_day, location, description)
+    VALUES (@feedId, @uid, @seriesUid, @title, @startAt, @endAt, @allDay, @location, @description)
   `);
   for (const e of events) {
     insert.run({
       feedId,
       uid: e.uid,
+      seriesUid: e.seriesUid,
       title: e.title,
       startAt: e.startAt,
       endAt: e.endAt,
