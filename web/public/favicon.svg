@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="The Goose Nest">
+  <rect width="64" height="64" rx="14" fill="#4f46e5"/>
+  <!-- tail -->
+  <path d="M21 39 L9 33 Q13 43 21 47 Z" fill="#ffffff"/>
+  <!-- body -->
+  <ellipse cx="31" cy="42" rx="17" ry="11" fill="#ffffff"/>
+  <!-- wing hint -->
+  <path d="M24 40 Q32 34 41 40" fill="none" stroke="#c7d2fe" stroke-width="2.6" stroke-linecap="round"/>
+  <!-- neck -->
+  <path d="M37 41 C 42 30, 47 30, 45 19" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <!-- head -->
+  <circle cx="45" cy="17" r="7" fill="#ffffff"/>
+  <!-- beak -->
+  <path d="M51 14 L61 17 L51 20 Z" fill="#f59e0b"/>
+  <!-- eye -->
+  <circle cx="46" cy="15" r="1.7" fill="#1f2937"/>
+</svg>
