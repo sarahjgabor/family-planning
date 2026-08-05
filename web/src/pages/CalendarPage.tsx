@@ -175,8 +175,8 @@ export function CalendarPage() {
     <div className="app">
       <header className="topbar">
         <div className="brand-row">
-          <span className="logo">📅</span>
-          <h1>Family Calendar</h1>
+          <span className="logo">🪿</span>
+          <h1>The Goose Nest</h1>
         </div>
         <div className="topbar-actions">
           <button className="btn" onClick={refreshAll} disabled={refreshing}>

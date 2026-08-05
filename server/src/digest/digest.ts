@@ -99,7 +99,7 @@ export function buildDigest(weekStart: Date): DigestContent {
   const byDay = groupByDay(events);
 
   const rangeLabel = `${fmtDay(startIso)} – ${fmtDay(new Date(weekEnd.getTime() - 86_400_000).toISOString())}`;
-  const subject = `📅 This week's family schedule (${rangeLabel})`;
+  const subject = `🪿 The Goose Nest — this week (${rangeLabel})`;
 
   // ---- HTML ----
   const htmlDays: string[] = [];
@@ -155,15 +155,15 @@ export function buildDigest(weekStart: Date): DigestContent {
   const html = `
   <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f1f5f9;padding:24px">
     <div style="max-width:600px;margin:0 auto">
-      <h1 style="font-size:20px;color:#0f172a;margin:0 0 4px">📅 This week's family schedule</h1>
+      <h1 style="font-size:20px;color:#0f172a;margin:0 0 4px">🪿 The Goose Nest — this week</h1>
       <p style="color:#64748b;margin:0">${rangeLabel}</p>
       ${htmlDays.join('')}
       ${link}
-      <p style="color:#94a3b8;font-size:12px;margin-top:28px">You're receiving this because you have an account on the family calendar.</p>
+      <p style="color:#94a3b8;font-size:12px;margin-top:28px">You're receiving this because you have an account on The Goose Nest.</p>
     </div>
   </div>`;
 
-  const text = `This week's family schedule (${rangeLabel})\n\n${textDays.join('\n\n')}\n${
+  const text = `The Goose Nest — this week (${rangeLabel})\n\n${textDays.join('\n\n')}\n${
     config.appUrl ? `\nOpen the calendar: ${config.appUrl}\n` : ''
   }`;
 

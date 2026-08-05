@@ -1,7 +1,7 @@
-# 📅 Family Activity Calendar
+# 🪿 The Goose Nest
 
-A shared calendar for your household — your nanny, parents, and husband — that does the
-two things Google Calendar won't:
+A shared family calendar for your household — your nanny, parents, and husband — that does
+the two things Google Calendar won't:
 
 1. **Merges several Google Calendars into one view.** Subscribe to each calendar using its
    secret iCal link and every event shows up together, color-coded by child.
@@ -115,7 +115,7 @@ The easiest option is a Gmail account with an **app password**:
    SMTP_SECURE=false
    SMTP_USER=you@gmail.com
    SMTP_PASS=your-16-char-app-password
-   SMTP_FROM=Family Calendar <you@gmail.com>
+   SMTP_FROM=The Goose Nest <you@gmail.com>
    TIMEZONE=America/New_York
    APP_URL=https://your-app.onrender.com
    ```

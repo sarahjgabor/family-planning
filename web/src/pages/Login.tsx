@@ -25,7 +25,7 @@ export function LoginPage() {
   return (
     <div className="auth-screen">
       <form className="auth-card" onSubmit={onSubmit}>
-        <h1 className="brand">📅 Family Calendar</h1>
+        <h1 className="brand">🪿 The Goose Nest</h1>
         <p className="subtitle">Sign in to see everyone's schedule.</p>
 
         {error && <div className="alert">{error}</div>}
