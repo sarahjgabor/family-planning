@@ -146,7 +146,30 @@ export async function syncFeed(feed: { id: number; url: string }): Promise<{ ok:
     // Google's "secret address in iCal format" is served over https; some
     // hosts use webcal:// — normalize that to https for fetching.
     const url = feed.url.replace(/^webcal:\/\//i, 'https://');
-    const data = await ical.async.fromURL(url);
+
+    // Fetch the .ics ourselves (rather than node-ical's fromURL) so we can send
+    // a browser-like User-Agent. Some hosts (e.g. behind Cloudflare, like
+    // Sawyer) reject non-browser clients with a 403 otherwise.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    let text: string;
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; TheGooseNest/1.0; +calendar-sync)',
+          Accept: 'text/calendar, text/plain;q=0.9, */*;q=0.8',
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`Request failed with status code ${res.status}`);
+      }
+      text = await res.text();
+    } finally {
+      clearTimeout(timeout);
+    }
+    const data = ical.parseICS(text);
 
     const parsed: ParsedEvent[] = [];
     for (const key of Object.keys(data)) {
