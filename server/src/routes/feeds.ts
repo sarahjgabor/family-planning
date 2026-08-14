@@ -37,13 +37,16 @@ feedsRouter.get('/', (_req, res) => {
 });
 
 feedsRouter.post('/', async (req, res) => {
+  // Normalize first (turns a Calendar ID / cid / embed link into an iCal feed
+  // URL) so it passes the http(s) validation below.
+  if (req.body && typeof req.body.url === 'string') req.body.url = normalizeIcalUrl(req.body.url);
   const parsed = feedSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
     return;
   }
   const { label, color, childId } = parsed.data;
-  const url = normalizeIcalUrl(parsed.data.url);
+  const url = parsed.data.url;
   const result = db
     .prepare('INSERT INTO feeds (label, url, color, child_id, created_by) VALUES (?, ?, ?, ?, ?)')
     .run(label, url, color, childId ?? null, req.user!.id);
@@ -57,13 +60,14 @@ feedsRouter.post('/', async (req, res) => {
 
 feedsRouter.put('/:id', (req, res) => {
   const id = Number(req.params.id);
+  if (req.body && typeof req.body.url === 'string') req.body.url = normalizeIcalUrl(req.body.url);
   const parsed = feedSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
     return;
   }
   const { label, color, childId } = parsed.data;
-  const url = normalizeIcalUrl(parsed.data.url);
+  const url = parsed.data.url;
   const result = db
     .prepare('UPDATE feeds SET label = ?, url = ?, color = ?, child_id = ? WHERE id = ?')
     .run(label, url, color, childId ?? null, id);

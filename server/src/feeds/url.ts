@@ -1,30 +1,50 @@
 /**
  * Normalize a calendar URL a user pasted into a usable iCal feed URL.
  *
- * Handles two common mistakes/variants:
- *  - webcal:// links  → https://
- *  - Google "add to my calendar" links (…/calendar/u/0?cid=BASE64) → the
- *    public iCal feed for that calendar. The cid is the base64-encoded
- *    calendar id; we decode it and build the /public/basic.ics URL.
+ * Handles the common variants people paste instead of the raw .ics feed:
+ *  - webcal:// links                              → https://
+ *  - a bare Google Calendar ID (…@…google.com)    → its public iCal feed
+ *  - "Add to my calendar" links (…?cid=BASE64)    → its public iCal feed
+ *  - "Public URL"/embed links (…/embed?src=ID)    → its public iCal feed
+ *
+ * The last three cover Google's "Integrate calendar" panel, including
+ * "From URL" (@import.calendar.google.com) calendars, which only expose a
+ * Calendar ID and Public URL — never a "Secret address".
  *
  * Anything we don't recognize is returned unchanged (trimmed).
  */
 export function normalizeIcalUrl(raw: string): string {
-  const url = raw.trim().replace(/^webcal:\/\//i, 'https://');
+  const trimmed = raw.trim();
+
+  // A bare calendar id pasted on its own, e.g.
+  // "abc123@group.calendar.google.com" or "…@import.calendar.google.com".
+  if (!/:\/\//.test(trimmed) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return icalFeedUrl(trimmed);
+  }
+
+  const url = trimmed.replace(/^webcal:\/\//i, 'https://');
   try {
     const u = new URL(url);
-    const isGoogle = /(?:^|\.)google\.com$/i.test(u.hostname);
-    const cid = u.searchParams.get('cid');
-    if (isGoogle && cid) {
-      const calendarId = decodeCid(cid);
-      if (calendarId && calendarId.includes('@')) {
-        return `https://calendar.google.com/calendar/ical/${encodeURIComponent(calendarId)}/public/basic.ics`;
+    if (/(?:^|\.)google\.com$/i.test(u.hostname)) {
+      // "Add to my calendar" link: cid is the base64-encoded calendar id.
+      const cid = u.searchParams.get('cid');
+      if (cid) {
+        const id = decodeCid(cid);
+        if (id && id.includes('@')) return icalFeedUrl(id);
       }
+      // "Public URL"/embed code: src is the (url-encoded) calendar id.
+      const src = u.searchParams.get('src');
+      if (src && src.includes('@')) return icalFeedUrl(src);
     }
   } catch {
     // Not a parseable URL — let validation handle it.
   }
   return url;
+}
+
+/** Build the public iCal feed URL for a Google calendar id. */
+function icalFeedUrl(calendarId: string): string {
+  return `https://calendar.google.com/calendar/ical/${encodeURIComponent(calendarId)}/public/basic.ics`;
 }
 
 /** Decode a (possibly URL-safe) base64 cid into the calendar id. */
