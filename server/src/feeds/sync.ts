@@ -158,8 +158,12 @@ export async function syncFeed(feed: { id: number; url: string }): Promise<{ ok:
         signal: controller.signal,
         redirect: 'follow',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; TheGooseNest/1.0; +calendar-sync)',
-          Accept: 'text/calendar, text/plain;q=0.9, */*;q=0.8',
+          // Present as a real browser: some feed hosts (Sawyer, other
+          // Cloudflare-fronted sites) 403 requests that don't look like one.
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept: 'text/calendar,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
         },
       });
       if (!res.ok) {
