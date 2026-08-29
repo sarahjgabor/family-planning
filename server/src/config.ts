@@ -45,4 +45,17 @@ export const config = {
         from: process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim() || 'family-calendar@localhost',
       }
     : null,
+
+  // Google Calendar connection (OAuth). Lets one person link their Google
+  // account so the app can read calendars that can't be added by iCal URL
+  // (e.g. a Sawyer feed imported into Google). Only enabled when both the
+  // client id/secret and APP_URL are set.
+  google:
+    process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim() && process.env.APP_URL?.trim()
+      ? {
+          clientId: process.env.GOOGLE_CLIENT_ID.trim(),
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET.trim(),
+          redirectUri: `${process.env.APP_URL.replace(/\/$/, '')}/api/google/callback`,
+        }
+      : null,
 };

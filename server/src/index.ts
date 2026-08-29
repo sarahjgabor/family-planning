@@ -11,6 +11,7 @@ import { eventsRouter } from './routes/events.js';
 import { feedsRouter } from './routes/feeds.js';
 import { calendarRouter } from './routes/calendar.js';
 import { digestRouter } from './routes/digest.js';
+import { googleRouter } from './routes/google.js';
 import { syncAllFeeds } from './feeds/sync.js';
 import { startDigestScheduler } from './digest/scheduler.js';
 
@@ -29,6 +30,7 @@ app.use('/api/events', eventsRouter);
 app.use('/api/feeds', feedsRouter);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/digest', digestRouter);
+app.use('/api/google', googleRouter);
 
 // Serve the built web app in production. The frontend is a single-page app,
 // so any non-API route falls back to index.html.

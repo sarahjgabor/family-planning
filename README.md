@@ -147,6 +147,40 @@ Repeat for each calendar. They'll all appear together, refreshing automatically.
 
 ---
 
+## Connect Google Calendar (for calendars with no iCal link)
+
+Some calendars can't be added by URL — e.g. a **Sawyer** feed you imported into Google, or
+any host that blocks servers from fetching its `.ics`. For those, connect a Google account
+once and the app reads your Google calendars through Google's API instead.
+
+**Only one person connects** (whoever's Google account has the calendars). Everyone else just
+sees the calendars — they don't need Google or to change how they log in.
+
+### One-time setup in Google Cloud Console
+
+1. Go to <https://console.cloud.google.com> and create a project (e.g. "Goose Nest").
+2. **APIs & Services → Library →** search **Google Calendar API → Enable**.
+3. **APIs & Services → OAuth consent screen:** choose **External**, fill in an app name and
+   your email, and **add your family members' Google emails as Test users** (or publish — see
+   the note below). Scopes can be left default; add `.../auth/calendar.readonly` if prompted.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application.**
+   Under **Authorized redirect URIs** add exactly:
+   `https://YOUR-APP.onrender.com/api/google/callback`
+   (use your real app URL — it must match `APP_URL`).
+5. Copy the **Client ID** and **Client secret**.
+6. In your host (Render → Environment) set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and make
+   sure `APP_URL` is your app's URL. Redeploy.
+7. In the app: **⚙ Manage → Subscribed calendars → Connect Google Calendar**, approve, then
+   **Add** the calendars you want.
+
+> **Refresh tokens & the "unverified app" screen:** while the OAuth consent screen is in
+> **Testing**, Google expires the connection after 7 days (you'd reconnect weekly). To make it
+> stick, set the consent screen to **In production**. Unverified, it shows a one-time
+> "Google hasn't verified this app" screen — click **Advanced → Go to (app)** to continue.
+> Fine for a family (up to 100 users); full verification only matters for a public app.
+
+---
+
 ## Growing into a native app
 
 Everything here is TypeScript, and the web UI is React — the direct on-ramp to

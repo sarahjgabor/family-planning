@@ -65,10 +65,25 @@ export interface Feed {
   label: string;
   url: string;
   color: string;
+  sourceType?: 'ical' | 'google';
   childId: number | null;
   lastSynced: string | null;
   lastError: string | null;
   eventCount: number;
+}
+
+export interface GoogleStatus {
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+}
+
+export interface GoogleCalendar {
+  id: string;
+  summary: string;
+  backgroundColor: string | null;
+  primary: boolean;
+  added: boolean;
 }
 
 export interface CalendarEvent {

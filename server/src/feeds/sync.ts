@@ -1,25 +1,13 @@
 import ical from 'node-ical';
 import { db } from '../db.js';
+import type { ParsedEvent } from './types.js';
+import { fetchGoogleCalendarEvents } from '../google/calendar.js';
 
 // How far back / forward we expand recurring events when caching them.
 // A family activity calendar rarely needs more than this, and each sync
 // re-expands against the current date so the window stays fresh.
 const PAST_WINDOW_DAYS = 90;
 const FUTURE_WINDOW_DAYS = 400;
-
-interface ParsedEvent {
-  uid: string;
-  // The base iCal UID shared by every occurrence of a series (equal to uid for
-  // non-recurring events). Per-event child assignments are keyed on this so
-  // assigning one occurrence of a repeat applies to the whole series.
-  seriesUid: string;
-  title: string;
-  startAt: string;
-  endAt: string | null;
-  allDay: boolean;
-  location: string | null;
-  description: string | null;
-}
 
 function isAllDay(date: unknown): boolean {
   return Boolean(date && typeof date === 'object' && (date as { dateOnly?: boolean }).dateOnly);
@@ -133,69 +121,88 @@ const replaceEvents = db.transaction((feedId: number, events: ParsedEvent[]) => 
   }
 });
 
+/** Fetch and parse an iCal feed URL into events within the window. */
+async function fetchIcalEvents(rawUrl: string, windowStart: Date, windowEnd: Date): Promise<ParsedEvent[]> {
+  // Google's "secret address in iCal format" is served over https; some
+  // hosts use webcal:// — normalize that to https for fetching.
+  const url = rawUrl.replace(/^webcal:\/\//i, 'https://');
+
+  // Fetch the .ics ourselves (rather than node-ical's fromURL) so we can send
+  // a browser-like User-Agent. Some hosts reject non-browser clients with 403.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  let text: string;
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        Accept: 'text/calendar,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Request failed with status code ${res.status}`);
+    }
+    text = await res.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const data = ical.parseICS(text);
+  const parsed: ParsedEvent[] = [];
+  for (const key of Object.keys(data)) {
+    const component = data[key];
+    if (component.type === 'VEVENT') {
+      parsed.push(...expandEvent(component as ical.VEvent, windowStart, windowEnd));
+    }
+  }
+  return parsed;
+}
+
+interface FeedRow {
+  id: number;
+  url: string;
+  source_type: string;
+  google_calendar_id: string | null;
+  google_account_id: number | null;
+}
+
 /**
- * Fetch a single feed's iCal URL, parse it, expand recurrences, and replace
- * the cached feed_events for that feed. Records success/error on the feed row.
+ * Sync a single feed — an iCal URL or a Google-API calendar — and replace its
+ * cached feed_events. Records success/error on the feed row.
  */
-export async function syncFeed(feed: { id: number; url: string }): Promise<{ ok: boolean; count?: number; error?: string }> {
+export async function syncFeed(feed: { id: number }): Promise<{ ok: boolean; count?: number; error?: string }> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - PAST_WINDOW_DAYS * 86_400_000);
   const windowEnd = new Date(now.getTime() + FUTURE_WINDOW_DAYS * 86_400_000);
 
+  const row = db
+    .prepare('SELECT id, url, source_type, google_calendar_id, google_account_id FROM feeds WHERE id = ?')
+    .get(feed.id) as FeedRow | undefined;
+  if (!row) return { ok: false, error: 'Calendar not found' };
+
   try {
-    // Google's "secret address in iCal format" is served over https; some
-    // hosts use webcal:// — normalize that to https for fetching.
-    const url = feed.url.replace(/^webcal:\/\//i, 'https://');
+    const parsed =
+      row.source_type === 'google'
+        ? await fetchGoogleCalendarEvents(row.google_account_id, row.google_calendar_id, windowStart, windowEnd)
+        : await fetchIcalEvents(row.url, windowStart, windowEnd);
 
-    // Fetch the .ics ourselves (rather than node-ical's fromURL) so we can send
-    // a browser-like User-Agent. Some hosts (e.g. behind Cloudflare, like
-    // Sawyer) reject non-browser clients with a 403 otherwise.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20_000);
-    let text: string;
-    try {
-      const res = await fetch(url, {
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: {
-          // Present as a real browser: some feed hosts (Sawyer, other
-          // Cloudflare-fronted sites) 403 requests that don't look like one.
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-          Accept: 'text/calendar,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-      });
-      if (!res.ok) {
-        throw new Error(`Request failed with status code ${res.status}`);
-      }
-      text = await res.text();
-    } finally {
-      clearTimeout(timeout);
-    }
-    const data = ical.parseICS(text);
-
-    const parsed: ParsedEvent[] = [];
-    for (const key of Object.keys(data)) {
-      const component = data[key];
-      if (component.type === 'VEVENT') {
-        parsed.push(...expandEvent(component as ical.VEvent, windowStart, windowEnd));
-      }
-    }
-
-    replaceEvents(feed.id, parsed);
-    db.prepare('UPDATE feeds SET last_synced = datetime(\'now\'), last_error = NULL WHERE id = ?').run(feed.id);
+    replaceEvents(row.id, parsed);
+    db.prepare('UPDATE feeds SET last_synced = datetime(\'now\'), last_error = NULL WHERE id = ?').run(row.id);
     return { ok: true, count: parsed.length };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    db.prepare('UPDATE feeds SET last_error = ? WHERE id = ?').run(message, feed.id);
+    db.prepare('UPDATE feeds SET last_error = ? WHERE id = ?').run(message, row.id);
     return { ok: false, error: message };
   }
 }
 
 /** Sync every subscribed feed. Used by the scheduler and manual refresh. */
 export async function syncAllFeeds(): Promise<void> {
-  const feeds = db.prepare('SELECT id, url FROM feeds').all() as { id: number; url: string }[];
+  const feeds = db.prepare('SELECT id FROM feeds').all() as { id: number }[];
   for (const feed of feeds) {
     await syncFeed(feed);
   }

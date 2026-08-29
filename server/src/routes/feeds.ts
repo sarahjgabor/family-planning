@@ -27,8 +27,8 @@ const feedSchema = z.object({
 feedsRouter.get('/', (_req, res) => {
   const rows = db
     .prepare(
-      `SELECT f.id, f.label, f.url, f.color, f.child_id AS childId, f.last_synced AS lastSynced,
-              f.last_error AS lastError,
+      `SELECT f.id, f.label, f.url, f.color, f.source_type AS sourceType,
+              f.child_id AS childId, f.last_synced AS lastSynced, f.last_error AS lastError,
               (SELECT COUNT(*) FROM feed_events fe WHERE fe.feed_id = f.id) AS eventCount
        FROM feeds f ORDER BY f.label`,
     )
@@ -54,7 +54,7 @@ feedsRouter.post('/', async (req, res) => {
   const id = Number(result.lastInsertRowid);
   // Sync immediately so events show up right away. Report the outcome so the
   // UI can warn if the URL was wrong.
-  const sync = await syncFeed({ id, url });
+  const sync = await syncFeed({ id });
   res.status(201).json({ id, sync });
 });
 

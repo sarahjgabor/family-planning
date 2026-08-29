@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, type Child, type Feed } from '../api';
+import { api, type Child, type Feed, type GoogleStatus, type GoogleCalendar } from '../api';
 
 /** A small "?" icon that reveals more detail on hover or keyboard focus. */
 function InfoTip({ children }: { children: ReactNode }) {
@@ -211,6 +211,8 @@ function CalendarsTab({
       </p>
       {error && <div className="alert">{error}</div>}
 
+      <GoogleSection onChanged={onChanged} />
+
       <ul className="list">
         {feeds.map((f) => (
           <li key={f.id}>
@@ -293,6 +295,121 @@ function CalendarsTab({
           {busy ? 'Adding…' : 'Subscribe'}
         </button>
       </div>
+    </div>
+  );
+}
+
+function GoogleSection({ onChanged }: { onChanged: () => void }) {
+  const [status, setStatus] = useState<GoogleStatus | null>(null);
+  const [calendars, setCalendars] = useState<GoogleCalendar[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadStatus() {
+    const s = await api.get<GoogleStatus>('/google/status');
+    setStatus(s);
+    if (s.connected) {
+      try {
+        setCalendars(await api.get<GoogleCalendar[]>('/google/calendars'));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not load Google calendars');
+      }
+    }
+  }
+
+  useEffect(() => {
+    api.get<GoogleStatus>('/google/status').then((s) => {
+      setStatus(s);
+      if (s.connected) loadStatus();
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function connect() {
+    setError(null);
+    try {
+      const { url } = await api.post<{ url: string }>('/google/connect');
+      window.location.href = url; // send the browser to Google's consent screen
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start Google sign-in');
+    }
+  }
+
+  async function disconnect() {
+    if (!confirm('Disconnect Google? Calendars added from it will be removed.')) return;
+    await api.post('/google/disconnect');
+    setCalendars(null);
+    await loadStatus();
+    onChanged();
+  }
+
+  async function addCalendar(cal: GoogleCalendar) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post('/google/calendars', {
+        googleCalendarId: cal.id,
+        label: cal.summary,
+        color: cal.backgroundColor ?? '#10b981',
+      });
+      await loadStatus();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add calendar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Hidden entirely until the server has Google configured.
+  if (!status || !status.configured) return null;
+
+  return (
+    <div className="google-box">
+      {error && <div className="alert">{error}</div>}
+      {!status.connected ? (
+        <>
+          <div className="google-head">
+            <strong>Connect Google Calendar</strong>
+            <span className="hint">
+              For calendars that can't be added by link (like Sawyer), connect your Google account once and pick which
+              calendars to show. Only you connect — everyone else just sees the calendars.
+            </span>
+          </div>
+          <button className="btn primary" onClick={connect}>
+            Connect Google Calendar
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="google-head">
+            <span>
+              ✅ Google connected{status.email ? ` — ${status.email}` : ''}
+            </span>
+            <button className="btn small" onClick={disconnect}>
+              Disconnect
+            </button>
+          </div>
+          <div className="hint">Add any of your Google calendars below:</div>
+          <ul className="list">
+            {calendars?.map((c) => (
+              <li key={c.id}>
+                <span className="dot" style={{ background: c.backgroundColor ?? '#10b981' }} />
+                <span className="grow">{c.summary}</span>
+                {c.added ? (
+                  <span className="muted small">Added</span>
+                ) : (
+                  <button className="btn small primary" disabled={busy} onClick={() => addCalendar(c)}>
+                    Add
+                  </button>
+                )}
+              </li>
+            ))}
+            {calendars && calendars.length === 0 && <li className="muted">No calendars found on this account.</li>}
+            {!calendars && <li className="muted">Loading your calendars…</li>}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

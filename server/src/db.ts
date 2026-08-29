@@ -50,13 +50,29 @@ export function migrate(): void {
       updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    -- Subscribed external calendars (e.g. Google Calendar secret iCal URLs).
+    -- A linked Google account (OAuth). One person connects; the calendars they
+    -- add from it are shared with everyone, like iCal feeds.
+    CREATE TABLE IF NOT EXISTS google_accounts (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      email         TEXT,
+      refresh_token TEXT NOT NULL,
+      access_token  TEXT,
+      token_expiry  TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Subscribed external calendars. Either an iCal URL (source_type 'ical') or
+    -- a Google Calendar read via the API (source_type 'google').
     CREATE TABLE IF NOT EXISTS feeds (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      label       TEXT NOT NULL,
-      url         TEXT NOT NULL,
-      color       TEXT NOT NULL DEFAULT '#10b981',
-      child_id    INTEGER REFERENCES children(id) ON DELETE SET NULL,
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      label             TEXT NOT NULL,
+      url               TEXT NOT NULL DEFAULT '',
+      source_type       TEXT NOT NULL DEFAULT 'ical',
+      google_calendar_id TEXT,
+      google_account_id INTEGER REFERENCES google_accounts(id) ON DELETE CASCADE,
+      color             TEXT NOT NULL DEFAULT '#10b981',
+      child_id          INTEGER REFERENCES children(id) ON DELETE SET NULL,
       last_synced TEXT,
       last_error  TEXT,
       created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -119,6 +135,9 @@ export function migrate(): void {
   ensureColumn('events', 'recurrence', 'TEXT');
   ensureColumn('events', 'recurrence_until', 'TEXT');
   ensureColumn('feed_events', 'series_uid', 'TEXT');
+  ensureColumn('feeds', 'source_type', "TEXT NOT NULL DEFAULT 'ical'");
+  ensureColumn('feeds', 'google_calendar_id', 'TEXT');
+  ensureColumn('feeds', 'google_account_id', 'INTEGER');
 }
 
 /** Add a column to a table only if it isn't already present. */

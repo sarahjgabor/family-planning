@@ -41,6 +41,19 @@ export function CalendarPage() {
     loadChildren();
   }, [loadChildren]);
 
+  // Returning from the Google consent screen: open Manage so the user can pick
+  // calendars, and clean the query string.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const g = params.get('google');
+    if (g === 'connected') {
+      setShowManage(true);
+    } else if (g === 'error') {
+      alert('Google connection was cancelled or failed. You can try again from Manage.');
+    }
+    if (g) window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   function refetch() {
     calendarRef.current?.getApi().refetchEvents();
   }
