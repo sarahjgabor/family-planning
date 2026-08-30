@@ -3,6 +3,22 @@ import { getAccountById, getValidAccessToken, type GoogleAccount } from './oauth
 
 const API = 'https://www.googleapis.com/calendar/v3';
 
+/** Pull Google's human-readable reason out of an error response body. */
+async function googleError(res: Response, label: string): Promise<Error> {
+  let detail = '';
+  try {
+    const body = (await res.json()) as { error?: { message?: string; errors?: Array<{ reason?: string }> } };
+    const reason = body.error?.errors?.[0]?.reason;
+    detail = body.error?.message ? ` — ${body.error.message}` : '';
+    if (reason === 'accessNotConfigured') {
+      detail = ' — the Google Calendar API isn’t enabled on your Google Cloud project. Enable it, wait a minute, and try again.';
+    }
+  } catch {
+    /* body wasn't JSON */
+  }
+  return new Error(`${label} (${res.status})${detail}`);
+}
+
 export interface GoogleCalendarSummary {
   id: string;
   summary: string;
@@ -27,7 +43,7 @@ export async function listGoogleCalendars(account: GoogleAccount): Promise<Googl
   const res = await fetch(`${API}/users/me/calendarList?minAccessRole=reader&maxResults=250`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`Google calendar list failed (${res.status})`);
+  if (!res.ok) throw await googleError(res, 'Google calendar list failed');
   const data = (await res.json()) as {
     items?: Array<{ id: string; summary: string; summaryOverride?: string; backgroundColor?: string; primary?: boolean }>;
   };
@@ -91,7 +107,7 @@ export async function fetchGoogleCalendarEvents(
     const res = await fetch(`${API}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) throw new Error(`Google events fetch failed (${res.status})`);
+    if (!res.ok) throw await googleError(res, 'Google events fetch failed');
     const data = (await res.json()) as { items?: GoogleApiEvent[]; nextPageToken?: string };
     for (const item of data.items ?? []) {
       const mapped = mapEvent(item);
