@@ -379,6 +379,32 @@ textarea:focus {
   flex: 1;
 }
 
+/* ---- Reminder picker ---- */
+.reminder-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.reminder-opts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.reminder-opts .chip {
+  cursor: pointer;
+}
+.reminder-opts .chip.on {
+  background: #eef2ff;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.reminder-opts .chip input {
+  width: auto;
+  margin-right: 6px;
+}
+
 /* ---- Recurring-edit scope chooser ---- */
 .scope {
   border: 1px solid var(--border);

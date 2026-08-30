@@ -106,5 +106,6 @@ export interface CalendarEvent {
     recurrenceUntil: string | null;
     feedId: number | null;
     uid: string | null;
+    seriesKey: string;
   };
 }

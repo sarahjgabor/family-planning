@@ -9,6 +9,7 @@ import { useAuth } from '../auth';
 import { api, type Child, type CalendarEvent } from '../api';
 import { EventModal, type EditableEvent } from '../components/EventModal';
 import { ManageModal } from '../components/ManageModal';
+import { ReminderPicker } from '../components/ReminderPicker';
 
 export function CalendarPage() {
   const { user, logout } = useAuth();
@@ -398,6 +399,9 @@ function DetailModal({
         )}
 
         {p.feedLabel && <p className="muted small">From “{p.feedLabel}” (imported — details are read-only)</p>}
+
+        {!event.allDay && <ReminderPicker seriesKey={p.seriesKey} />}
+
         <div className="modal-actions">
           <div className="spacer" />
           <button className="btn primary" onClick={onClose}>

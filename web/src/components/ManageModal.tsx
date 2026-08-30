@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, type Child, type Feed, type GoogleStatus, type GoogleCalendar } from '../api';
+import { getPushState, enablePush, disablePush, sendTestPush, type PushState } from '../push';
 
 /** A small "?" icon that reveals more detail on hover or keyboard focus. */
 function InfoTip({ children }: { children: ReactNode }) {
@@ -23,7 +24,7 @@ interface Props {
 const SWATCHES = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#64748b'];
 
 export function ManageModal({ onClose, onChanged }: Props) {
-  const [tab, setTab] = useState<'people' | 'calendars' | 'digest'>('people');
+  const [tab, setTab] = useState<'people' | 'calendars' | 'digest' | 'notifications'>('people');
   const [children, setChildren] = useState<Child[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
 
@@ -55,6 +56,9 @@ export function ManageModal({ onClose, onChanged }: Props) {
           <button className={tab === 'digest' ? 'tab active' : 'tab'} onClick={() => setTab('digest')}>
             Email digest
           </button>
+          <button className={tab === 'notifications' ? 'tab active' : 'tab'} onClick={() => setTab('notifications')}>
+            Notifications
+          </button>
           <div className="spacer" />
           <button className="btn" onClick={onClose}>
             Done
@@ -64,6 +68,7 @@ export function ManageModal({ onClose, onChanged }: Props) {
         {tab === 'people' && <PeopleTab children={children} onChanged={afterChange} />}
         {tab === 'calendars' && <CalendarsTab feeds={feeds} children={children} onChanged={afterChange} />}
         {tab === 'digest' && <DigestTab />}
+        {tab === 'notifications' && <NotificationsTab />}
       </div>
     </div>
   );
@@ -409,6 +414,116 @@ function GoogleSection({ onChanged }: { onChanged: () => void }) {
             {!calendars && <li className="muted">Loading your calendars…</li>}
           </ul>
         </>
+      )}
+    </div>
+  );
+}
+
+function NotificationsTab() {
+  const [serverEnabled, setServerEnabled] = useState<boolean | null>(null);
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    setState(await getPushState());
+  }
+
+  useEffect(() => {
+    api.get<{ enabled: boolean }>('/push/config').then((c) => setServerEnabled(c.enabled)).catch(() => setServerEnabled(false));
+    refresh();
+  }, []);
+
+  async function enable() {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await enablePush();
+      setState(result);
+      if (result === 'enabled') setMessage('Notifications are on for this device.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not enable notifications');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable() {
+    setBusy(true);
+    try {
+      await disablePush();
+      await refresh();
+      setMessage('Notifications turned off for this device.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function test() {
+    setBusy(true);
+    setError(null);
+    try {
+      const sent = await sendTestPush();
+      setMessage(sent > 0 ? 'Test sent — check your notifications.' : 'No devices are subscribed yet.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send test');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="tab-body">
+      <p className="muted">
+        Get a push notification before an event starts. Open any event and pick <strong>10 min</strong>,{' '}
+        <strong>30 min</strong>, or <strong>1 hour</strong> before — everyone chooses their own reminders. First, turn on
+        notifications on each device you want them.
+      </p>
+
+      {serverEnabled === false && (
+        <div className="alert">
+          Push isn't set up on the server yet. Add <code>VAPID_PUBLIC_KEY</code> and <code>VAPID_PRIVATE_KEY</code> where
+          the app is hosted, then restart it. (Ask whoever set up the calendar.)
+        </div>
+      )}
+      {message && <div className="notice">{message}</div>}
+      {error && <div className="alert">{error}</div>}
+
+      {state === 'needs-ios-install' && (
+        <div className="alert">
+          On iPhone/iPad, first add The Goose Nest to your Home Screen: tap the <strong>Share</strong> icon →{' '}
+          <strong>Add to Home Screen</strong>, then open it from that icon and come back here to turn on notifications.
+        </div>
+      )}
+      {state === 'unsupported' && <p className="muted">This browser doesn't support notifications.</p>}
+      {state === 'denied' && (
+        <p className="feed-warn">
+          Notifications are blocked in your browser/site settings. Allow them for this site, then reload and try again.
+        </p>
+      )}
+
+      {serverEnabled && (state === 'disabled' || state === 'enabled') && (
+        <div className="add-row">
+          {state === 'enabled' ? (
+            <>
+              <span className="notice" style={{ flex: 1 }}>
+                ✅ Notifications are on for this device.
+              </span>
+              <button className="btn" onClick={test} disabled={busy}>
+                Send test
+              </button>
+              <button className="btn small danger" onClick={disable} disabled={busy}>
+                Turn off
+              </button>
+            </>
+          ) : (
+            <button className="btn primary" onClick={enable} disabled={busy}>
+              {busy ? 'Enabling…' : 'Enable notifications on this device'}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

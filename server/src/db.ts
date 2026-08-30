@@ -123,6 +123,38 @@ export function migrate(): void {
       UNIQUE(feed_id, uid)
     );
 
+    -- Web push subscriptions (one per browser/device a user enables).
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint   TEXT NOT NULL UNIQUE,
+      p256dh     TEXT NOT NULL,
+      auth       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Per-user, per-event reminder choices. series_key identifies the event or
+    -- series (e.g. 'local:12' or 'feed:3:<uid>'); minutes_before is 10/30/60.
+    CREATE TABLE IF NOT EXISTS reminders (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      series_key    TEXT NOT NULL,
+      minutes_before INTEGER NOT NULL,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, series_key, minutes_before)
+    );
+
+    -- Records reminders already pushed, so each occurrence fires at most once.
+    CREATE TABLE IF NOT EXISTS sent_reminders (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL,
+      series_key      TEXT NOT NULL,
+      occurrence_start TEXT NOT NULL,
+      minutes_before  INTEGER NOT NULL,
+      sent_at         TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, series_key, occurrence_start, minutes_before)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_at);
     CREATE INDEX IF NOT EXISTS idx_feed_events_feed ON feed_events(feed_id);
     CREATE INDEX IF NOT EXISTS idx_feed_events_start ON feed_events(start_at);

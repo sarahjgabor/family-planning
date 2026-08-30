@@ -12,8 +12,11 @@ import { feedsRouter } from './routes/feeds.js';
 import { calendarRouter } from './routes/calendar.js';
 import { digestRouter } from './routes/digest.js';
 import { googleRouter } from './routes/google.js';
+import { pushRouter } from './routes/push.js';
+import { remindersRouter } from './routes/reminders.js';
 import { syncAllFeeds } from './feeds/sync.js';
 import { startDigestScheduler } from './digest/scheduler.js';
+import { startReminderScheduler } from './push/reminders.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +34,8 @@ app.use('/api/feeds', feedsRouter);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/digest', digestRouter);
 app.use('/api/google', googleRouter);
+app.use('/api/push', pushRouter);
+app.use('/api/reminders', remindersRouter);
 
 // Serve the built web app in production. The frontend is a single-page app,
 // so any non-API route falls back to index.html.
@@ -59,3 +64,6 @@ setInterval(() => {
 
 // Schedule the Sunday-morning email digest (no-op unless SMTP is configured).
 startDigestScheduler();
+
+// Schedule per-minute event reminder pushes (no-op unless VAPID is configured).
+startReminderScheduler();

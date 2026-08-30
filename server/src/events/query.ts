@@ -26,6 +26,9 @@ export interface MergedEvent {
     // a specific one. Null for locally-added events.
     feedId: number | null;
     uid: string | null;
+    // Stable identifier for the event/series, used for per-user reminders.
+    // 'local:<masterId>' or 'feed:<feedId>:<seriesUid>'.
+    seriesKey: string;
   };
 }
 
@@ -119,6 +122,7 @@ function expandLocal(
       recurrenceUntil: row.recurrence_until,
       feedId: null,
       uid: null,
+      seriesKey: `local:${row.id}`,
     },
   });
 
@@ -323,6 +327,7 @@ export function getMergedEvents(windowStart: string, windowEnd: string): MergedE
         recurrenceUntil: null,
         feedId: r.feed_id,
         uid: r.uid,
+        seriesKey: `feed:${r.feed_id}:${r.uid}`,
       },
     });
   }

@@ -46,6 +46,18 @@ export const config = {
       }
     : null,
 
+  // Web push notifications for event reminders. Enabled when a VAPID keypair
+  // is set (generate one with `npx web-push generate-vapid-keys`).
+  vapid:
+    process.env.VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim()
+      ? {
+          publicKey: process.env.VAPID_PUBLIC_KEY.trim(),
+          privateKey: process.env.VAPID_PRIVATE_KEY.trim(),
+          // web-push requires a contact; a URL or mailto: is fine.
+          subject: process.env.VAPID_SUBJECT?.trim() || process.env.APP_URL?.trim() || 'mailto:noreply@thegoosenest.app',
+        }
+      : null,
+
   // Google Calendar connection (OAuth). Lets one person link their Google
   // account so the app can read calendars that can't be added by iCal URL
   // (e.g. a Sawyer feed imported into Google). Only enabled when both the

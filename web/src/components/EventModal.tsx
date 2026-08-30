@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type Child } from '../api';
+import { ReminderPicker } from './ReminderPicker';
 
 export interface EditableEvent {
   id: number; // the master event's id
@@ -264,6 +265,8 @@ export function EventModal({ children, event, initialStart, onClose, onSaved }: 
             </label>
           </fieldset>
         )}
+
+        {event && !allDay && <ReminderPicker seriesKey={`local:${event.id}`} />}
 
         <div className="modal-actions">
           {event && (
