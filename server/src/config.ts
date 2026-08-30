@@ -16,6 +16,14 @@ function required(name: string, fallback?: string): string {
 
 const smtpHost = process.env.SMTP_HOST?.trim() || null;
 
+/** Coerce a VAPID subject into a value web-push accepts (mailto: or URL). */
+function normalizeVapidSubject(value: string): string {
+  const v = value.trim();
+  if (/^(mailto:|https?:\/\/)/i.test(v)) return v;
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return `mailto:${v}`;
+  return 'mailto:noreply@thegoosenest.app';
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   databasePath: process.env.DATABASE_PATH ?? path.resolve(__dirname, '../../data/family.sqlite'),
@@ -53,8 +61,12 @@ export const config = {
       ? {
           publicKey: process.env.VAPID_PUBLIC_KEY.trim(),
           privateKey: process.env.VAPID_PRIVATE_KEY.trim(),
-          // web-push requires a contact; a URL or mailto: is fine.
-          subject: process.env.VAPID_SUBJECT?.trim() || process.env.APP_URL?.trim() || 'mailto:noreply@thegoosenest.app',
+          // web-push requires a contact that is a mailto: or http(s) URL.
+          // Accept a bare email (prefix mailto:) and fall back safely so a
+          // stray value can't make setVapidDetails throw.
+          subject: normalizeVapidSubject(
+            process.env.VAPID_SUBJECT?.trim() || process.env.APP_URL?.trim() || 'mailto:noreply@thegoosenest.app',
+          ),
         }
       : null,
 

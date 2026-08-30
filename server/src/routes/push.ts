@@ -3,13 +3,15 @@ import { z } from 'zod';
 import { db } from '../db.js';
 import { config } from '../config.js';
 import { requireAuth } from '../auth.js';
-import { sendToUser } from '../push/push.js';
+import { sendToUser, initPush } from '../push/push.js';
 
 export const pushRouter = Router();
 
-// Public: whether push is available and the VAPID public key to subscribe with.
+// Public: whether push is actually usable (keys present AND valid) and the
+// VAPID public key to subscribe with.
 pushRouter.get('/config', (_req, res) => {
-  res.json({ enabled: Boolean(config.vapid), publicKey: config.vapid?.publicKey ?? null });
+  const enabled = initPush(); // false if keys are missing or invalid
+  res.json({ enabled, publicKey: enabled ? config.vapid?.publicKey ?? null : null });
 });
 
 const subscribeSchema = z.object({
