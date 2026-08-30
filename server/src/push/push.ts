@@ -4,13 +4,19 @@ import { db } from '../db.js';
 
 let configured = false;
 
-/** Configure web-push with the VAPID keypair, once. */
+/** Configure web-push with the VAPID keypair, once. A bad key disables push
+ *  rather than crashing the server. */
 export function initPush(): boolean {
   if (configured) return true;
   if (!config.vapid) return false;
-  webpush.setVapidDetails(config.vapid.subject, config.vapid.publicKey, config.vapid.privateKey);
-  configured = true;
-  return true;
+  try {
+    webpush.setVapidDetails(config.vapid.subject, config.vapid.publicKey, config.vapid.privateKey);
+    configured = true;
+    return true;
+  } catch (err) {
+    console.warn('⚠️  Push notifications disabled — invalid VAPID config:', err instanceof Error ? err.message : err);
+    return false;
+  }
 }
 
 export interface PushPayload {
