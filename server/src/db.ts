@@ -22,6 +22,7 @@ export function migrate(): void {
       name          TEXT NOT NULL,
       email         TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      is_admin      INTEGER NOT NULL DEFAULT 0,
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -170,6 +171,14 @@ export function migrate(): void {
   ensureColumn('feeds', 'source_type', "TEXT NOT NULL DEFAULT 'ical'");
   ensureColumn('feeds', 'google_calendar_id', 'TEXT');
   ensureColumn('feeds', 'google_account_id', 'INTEGER');
+  ensureColumn('users', 'is_admin', 'INTEGER NOT NULL DEFAULT 0');
+
+  // Ensure there's an account owner (admin). If none is set yet, promote the
+  // first-registered user — that's whoever set the calendar up.
+  const adminCount = (db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_admin = 1').get() as { n: number }).n;
+  if (adminCount === 0) {
+    db.prepare('UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)').run();
+  }
 }
 
 /** Add a column to a table only if it isn't already present. */

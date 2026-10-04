@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../db.js';
 import { config } from '../config.js';
-import { hashPassword, verifyPassword, signToken, requireAuth } from '../auth.js';
+import { hashPassword, verifyPassword, signToken, requireAuth, isAdmin } from '../auth.js';
 
 export const authRouter = Router();
 
@@ -33,12 +33,14 @@ authRouter.post('/signup', async (req, res) => {
   }
 
   const passwordHash = await hashPassword(password);
+  // The very first account becomes the owner (admin).
+  const isFirst = (db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n === 0;
   const result = db
-    .prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)')
-    .run(name, email, passwordHash);
+    .prepare('INSERT INTO users (name, email, password_hash, is_admin) VALUES (?, ?, ?, ?)')
+    .run(name, email, passwordHash, isFirst ? 1 : 0);
 
   const user = { id: Number(result.lastInsertRowid), name, email };
-  res.status(201).json({ token: signToken(user), user });
+  res.status(201).json({ token: signToken(user), user: { ...user, isAdmin: isFirst } });
 });
 
 const loginSchema = z.object({
@@ -63,12 +65,12 @@ authRouter.post('/login', async (req, res) => {
   }
 
   const user = { id: row.id, name: row.name, email: row.email };
-  res.json({ token: signToken(user), user });
+  res.json({ token: signToken(user), user: { ...user, isAdmin: isAdmin(row.id) } });
 });
 
 // Returns the currently signed-in user (used to restore a session on load).
 authRouter.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user });
+  res.json({ user: { ...req.user, isAdmin: isAdmin(req.user!.id) } });
 });
 
 // Tells the client whether an invite code is needed, so the signup form can

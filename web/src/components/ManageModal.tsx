@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, type Child, type Feed, type GoogleStatus, type GoogleCalendar } from '../api';
+import { api, type Child, type Feed, type GoogleStatus, type GoogleCalendar, type Member } from '../api';
 import { getPushState, enablePush, disablePush, sendTestPush, type PushState } from '../push';
+import { useAuth } from '../auth';
 
 /** A small "?" icon that reveals more detail on hover or keyboard focus. */
 function InfoTip({ children }: { children: ReactNode }) {
@@ -24,7 +25,8 @@ interface Props {
 const SWATCHES = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#64748b'];
 
 export function ManageModal({ onClose, onChanged }: Props) {
-  const [tab, setTab] = useState<'people' | 'calendars' | 'digest' | 'notifications'>('people');
+  const [tab, setTab] = useState<'people' | 'calendars' | 'digest' | 'notifications' | 'accounts'>('people');
+  const { user } = useAuth();
   const [children, setChildren] = useState<Child[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
 
@@ -59,6 +61,11 @@ export function ManageModal({ onClose, onChanged }: Props) {
           <button className={tab === 'notifications' ? 'tab active' : 'tab'} onClick={() => setTab('notifications')}>
             Notifications
           </button>
+          {user?.isAdmin && (
+            <button className={tab === 'accounts' ? 'tab active' : 'tab'} onClick={() => setTab('accounts')}>
+              Accounts
+            </button>
+          )}
           <div className="spacer" />
           <button className="btn" onClick={onClose}>
             Done
@@ -69,6 +76,7 @@ export function ManageModal({ onClose, onChanged }: Props) {
         {tab === 'calendars' && <CalendarsTab feeds={feeds} children={children} onChanged={afterChange} />}
         {tab === 'digest' && <DigestTab />}
         {tab === 'notifications' && <NotificationsTab />}
+        {tab === 'accounts' && user?.isAdmin && <AccountsTab currentUserId={user.id} />}
       </div>
     </div>
   );
@@ -525,6 +533,71 @@ function NotificationsTab() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function AccountsTab({ currentUserId }: { currentUserId: number }) {
+  const [members, setMembers] = useState<Member[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  async function load() {
+    try {
+      setMembers(await api.get<Member[]>('/users'));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load accounts');
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function remove(m: Member) {
+    if (!confirm(`Remove ${m.name} (${m.email})? They'll lose access. Events they added stay.`)) return;
+    setBusyId(m.id);
+    setError(null);
+    try {
+      await api.del(`/users/${m.id}`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove account');
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="tab-body">
+      <p className="muted">
+        Everyone with an account can see the calendar. Remove someone to revoke their access — the events and calendars
+        they added stay. Only you (the owner) can manage this.
+      </p>
+      {error && <div className="alert">{error}</div>}
+
+      <ul className="list">
+        {members?.map((m) => (
+          <li key={m.id}>
+            <span className="grow">
+              <strong>{m.name}</strong>
+              {m.isAdmin && <span className="hint"> · owner</span>}
+              <br />
+              <span className="muted small">{m.email}</span>
+            </span>
+            {m.id === currentUserId ? (
+              <span className="muted small">You</span>
+            ) : m.isAdmin ? (
+              <span className="muted small">Owner</span>
+            ) : (
+              <button className="btn small danger" disabled={busyId === m.id} onClick={() => remove(m)}>
+                {busyId === m.id ? 'Removing…' : 'Remove'}
+              </button>
+            )}
+          </li>
+        ))}
+        {members && members.length === 0 && <li className="muted">No accounts yet.</li>}
+        {!members && !error && <li className="muted">Loading…</li>}
+      </ul>
     </div>
   );
 }

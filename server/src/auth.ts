@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import type { NextFunction, Request, Response } from 'express';
 import { config } from './config.js';
+import { db } from './db.js';
 
 export interface AuthUser {
   id: number;
@@ -48,4 +49,19 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   } catch {
     res.status(401).json({ error: 'Session expired, please sign in again' });
   }
+}
+
+/** True if the given user id is the account owner/admin. */
+export function isAdmin(userId: number): boolean {
+  const row = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(userId) as { is_admin: number } | undefined;
+  return Boolean(row?.is_admin);
+}
+
+/** Middleware that requires the signed-in user to be an admin. Runs after requireAuth. */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user || !isAdmin(req.user.id)) {
+    res.status(403).json({ error: 'Only the account owner can manage members' });
+    return;
+  }
+  next();
 }

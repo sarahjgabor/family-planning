@@ -14,6 +14,7 @@ import { digestRouter } from './routes/digest.js';
 import { googleRouter } from './routes/google.js';
 import { pushRouter } from './routes/push.js';
 import { remindersRouter } from './routes/reminders.js';
+import { usersRouter } from './routes/users.js';
 import { syncAllFeeds } from './feeds/sync.js';
 import { startDigestScheduler } from './digest/scheduler.js';
 import { startReminderScheduler } from './push/reminders.js';
@@ -36,6 +37,7 @@ app.use('/api/digest', digestRouter);
 app.use('/api/google', googleRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/reminders', remindersRouter);
+app.use('/api/users', usersRouter);
 
 // Serve the built web app in production. The frontend is a single-page app,
 // so any non-API route falls back to index.html.

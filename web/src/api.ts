@@ -52,6 +52,15 @@ export interface User {
   id: number;
   name: string;
   email: string;
+  isAdmin?: boolean;
+}
+
+export interface Member {
+  id: number;
+  name: string;
+  email: string;
+  isAdmin: boolean;
+  createdAt: string;
 }
 
 export interface Child {
