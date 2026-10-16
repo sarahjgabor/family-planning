@@ -98,7 +98,22 @@ export async function exchangeCodeAndStore(code: string, userId: number): Promis
     /* email is best-effort */
   }
 
-  // This is a family app: keep a single shared connection. Replace any prior one.
+  // Single shared connection. If the SAME Google account is reconnecting
+  // (e.g. to refresh an expired token), update its tokens in place so the
+  // calendars already added from it stay attached. Only when a DIFFERENT
+  // account connects do we replace (which drops the old account's calendars).
+  const existing = getConnectedAccount();
+  const sameAccount = existing && (!existing.email || !email || existing.email === email);
+
+  if (existing && sameAccount) {
+    db.prepare(
+      `UPDATE google_accounts
+       SET user_id = ?, email = COALESCE(?, email), refresh_token = ?, access_token = ?, token_expiry = ?
+       WHERE id = ?`,
+    ).run(userId, email, token.refresh_token, token.access_token, expiryIso(token.expires_in), existing.id);
+    return getAccountById(existing.id)!;
+  }
+
   db.prepare('DELETE FROM google_accounts').run();
   const result = db
     .prepare(

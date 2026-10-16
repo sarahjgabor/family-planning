@@ -533,6 +533,10 @@ textarea:focus {
   flex-basis: 100%;
   font-weight: 400;
 }
+.row-btns {
+  display: inline-flex;
+  gap: 6px;
+}
 .btn.small.primary {
   background: var(--primary);
   border-color: var(--primary);

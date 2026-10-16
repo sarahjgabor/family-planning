@@ -399,11 +399,19 @@ function GoogleSection({ onChanged }: { onChanged: () => void }) {
             <span>
               ✅ Google connected{status.email ? ` — ${status.email}` : ''}
             </span>
-            <button className="btn small" onClick={disconnect}>
-              Disconnect
-            </button>
+            <span className="row-btns">
+              <button className="btn small" onClick={connect}>
+                Reconnect
+              </button>
+              <button className="btn small" onClick={disconnect}>
+                Disconnect
+              </button>
+            </span>
           </div>
-          <div className="hint">Add any of your Google calendars below:</div>
+          <div className="hint">
+            Having trouble (e.g. a “token expired” error)? <strong>Reconnect</strong> refreshes the connection and keeps
+            your calendars. Add any of your Google calendars below:
+          </div>
           <ul className="list">
             {calendars?.map((c) => (
               <li key={c.id}>
