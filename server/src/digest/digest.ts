@@ -5,7 +5,7 @@ import { getMergedEvents, type MergedEvent } from '../events/query.js';
 
 let transporter: Transporter | null = null;
 
-function getTransporter(): Transporter | null {
+export function getTransporter(): Transporter | null {
   if (!config.smtp) return null;
   if (!transporter) {
     transporter = nodemailer.createTransport({

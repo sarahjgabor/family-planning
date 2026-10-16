@@ -2,6 +2,7 @@ import ical from 'node-ical';
 import { db } from '../db.js';
 import type { ParsedEvent } from './types.js';
 import { fetchGoogleCalendarEvents } from '../google/calendar.js';
+import { notifyFeedFailure } from '../alerts.js';
 
 // How far back / forward we expand recurring events when caching them.
 // A family activity calendar rarely needs more than this, and each sync
@@ -164,10 +165,12 @@ async function fetchIcalEvents(rawUrl: string, windowStart: Date, windowEnd: Dat
 
 interface FeedRow {
   id: number;
+  label: string;
   url: string;
   source_type: string;
   google_calendar_id: string | null;
   google_account_id: number | null;
+  error_notified: number;
 }
 
 /**
@@ -180,7 +183,9 @@ export async function syncFeed(feed: { id: number }): Promise<{ ok: boolean; cou
   const windowEnd = new Date(now.getTime() + FUTURE_WINDOW_DAYS * 86_400_000);
 
   const row = db
-    .prepare('SELECT id, url, source_type, google_calendar_id, google_account_id FROM feeds WHERE id = ?')
+    .prepare(
+      'SELECT id, label, url, source_type, google_calendar_id, google_account_id, error_notified FROM feeds WHERE id = ?',
+    )
     .get(feed.id) as FeedRow | undefined;
   if (!row) return { ok: false, error: 'Calendar not found' };
 
@@ -191,11 +196,18 @@ export async function syncFeed(feed: { id: number }): Promise<{ ok: boolean; cou
         : await fetchIcalEvents(row.url, windowStart, windowEnd);
 
     replaceEvents(row.id, parsed);
-    db.prepare('UPDATE feeds SET last_synced = datetime(\'now\'), last_error = NULL WHERE id = ?').run(row.id);
+    db.prepare("UPDATE feeds SET last_synced = datetime('now'), last_error = NULL, error_notified = 0 WHERE id = ?").run(
+      row.id,
+    );
     return { ok: true, count: parsed.length };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     db.prepare('UPDATE feeds SET last_error = ? WHERE id = ?').run(message, row.id);
+    // Alert the owner once per failure episode (not every 30-min retry).
+    if (!row.error_notified) {
+      db.prepare('UPDATE feeds SET error_notified = 1 WHERE id = ?').run(row.id);
+      void notifyFeedFailure(row.label, message);
+    }
     return { ok: false, error: message };
   }
 }

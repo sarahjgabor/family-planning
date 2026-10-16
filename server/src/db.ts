@@ -171,6 +171,7 @@ export function migrate(): void {
   ensureColumn('feeds', 'source_type', "TEXT NOT NULL DEFAULT 'ical'");
   ensureColumn('feeds', 'google_calendar_id', 'TEXT');
   ensureColumn('feeds', 'google_account_id', 'INTEGER');
+  ensureColumn('feeds', 'error_notified', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'is_admin', 'INTEGER NOT NULL DEFAULT 0');
 
   // Ensure there's an account owner (admin). If none is set yet, promote the
