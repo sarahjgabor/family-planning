@@ -117,6 +117,7 @@ export function buildDigest(weekStart: Date): DigestContent {
         const who = e.extendedProps.childName ? escapeHtml(e.extendedProps.childName) : '';
         const parts: string[] = [];
         if (e.extendedProps.location) parts.push(`📍 ${escapeHtml(e.extendedProps.location)}`);
+        if (e.extendedProps.appNote) parts.push(`📝 ${escapeHtml(e.extendedProps.appNote)}`);
         if (e.extendedProps.notes) parts.push(escapeHtml(e.extendedProps.notes));
         if (e.extendedProps.feedLabel) parts.push(`<em style="color:#94a3b8">${escapeHtml(e.extendedProps.feedLabel)}</em>`);
         const detail = parts.length ? `<div style="color:#475569;font-size:13px;margin-top:2px">${parts.join('<br>')}</div>` : '';
@@ -142,6 +143,7 @@ export function buildDigest(weekStart: Date): DigestContent {
       let line = `  ${fmtTime(e)}  ${e.title}`;
       if (e.extendedProps.childName) line += ` (${e.extendedProps.childName})`;
       if (e.extendedProps.location) line += `\n      📍 ${e.extendedProps.location}`;
+      if (e.extendedProps.appNote) line += `\n      📝 ${e.extendedProps.appNote}`;
       if (e.extendedProps.notes) line += `\n      ${e.extendedProps.notes}`;
       return line;
     });

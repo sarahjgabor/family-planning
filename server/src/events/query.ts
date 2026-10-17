@@ -19,6 +19,8 @@ export interface MergedEvent {
     childName: string | null;
     location: string | null;
     notes: string | null;
+    // A household note added in the app on an imported event (survives sync).
+    appNote: string | null;
     feedLabel: string | null;
     recurrence: 'weekly' | null;
     recurrenceUntil: string | null;
@@ -117,6 +119,7 @@ function expandLocal(
       childName,
       location: fields.location,
       notes: fields.notes,
+      appNote: null,
       feedLabel: null,
       recurrence: recurring ? 'weekly' : null,
       recurrenceUntil: row.recurrence_until,
@@ -293,19 +296,19 @@ export function getMergedEvents(windowStart: string, windowEnd: string): MergedE
     feed_child_id: number | null;
   }>;
 
-  // Per-event child assignments, keyed "<feedId>:<uid>". A present key overrides
-  // the feed's default child (its value may be null for "explicitly no one").
-  const assignments = new Map<string, number | null>();
+  // Per-event child assignments and household notes, keyed "<feedId>:<uid>".
+  const assignments = new Map<string, { childId: number | null; note: string | null }>();
   for (const a of db
-    .prepare('SELECT feed_id, uid, child_id FROM feed_event_assignments')
-    .all() as { feed_id: number; uid: string; child_id: number | null }[]) {
-    assignments.set(`${a.feed_id}:${a.uid}`, a.child_id);
+    .prepare('SELECT feed_id, uid, child_id, note FROM feed_event_assignments')
+    .all() as { feed_id: number; uid: string; child_id: number | null; note: string | null }[]) {
+    assignments.set(`${a.feed_id}:${a.uid}`, { childId: a.child_id, note: a.note });
   }
 
   for (const r of feedRows) {
     const key = `${r.feed_id}:${r.uid}`;
-    // The assigned child wins over the feed's default child.
-    const childId = assignments.has(key) ? assignments.get(key)! : r.feed_child_id;
+    const override = assignments.get(key);
+    // A per-event assigned child wins; otherwise fall back to the feed's child.
+    const childId = override?.childId != null ? override.childId : r.feed_child_id;
     const child = childId != null ? childMap.get(childId) : undefined;
     events.push({
       id: `feed-${r.id}`,
@@ -322,6 +325,7 @@ export function getMergedEvents(windowStart: string, windowEnd: string): MergedE
         childName: child?.name ?? null,
         location: r.location,
         notes: r.description,
+        appNote: override?.note ?? null,
         feedLabel: r.feed_label,
         recurrence: null,
         recurrenceUntil: null,

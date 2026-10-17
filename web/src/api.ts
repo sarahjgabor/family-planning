@@ -110,6 +110,7 @@ export interface CalendarEvent {
     childName: string | null;
     location: string | null;
     notes: string | null;
+    appNote: string | null;
     feedLabel: string | null;
     recurrence: 'weekly' | null;
     recurrenceUntil: string | null;

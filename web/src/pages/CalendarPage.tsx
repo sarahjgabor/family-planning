@@ -340,7 +340,9 @@ function DetailModal({
 }) {
   const p = event.extendedProps;
   const [assignedChildId, setAssignedChildId] = useState<number | null>(p.childId);
+  const [note, setNote] = useState(p.appNote ?? '');
   const [saving, setSaving] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
   const canAssign = p.source === 'feed' && p.feedId != null && p.uid != null;
 
   async function assign(childId: number | null) {
@@ -353,6 +355,18 @@ function DetailModal({
       setAssignedChildId(p.childId); // revert on failure
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveNote() {
+    if (note.trim() === (p.appNote ?? '').trim()) return; // unchanged
+    try {
+      await api.put(`/feeds/${p.feedId}/note`, { uid: p.uid, note: note.trim() || null });
+      setNoteSaved(true);
+      setTimeout(() => setNoteSaved(false), 1500);
+      onChanged();
+    } catch {
+      /* leave the text so they can retry */
     }
   }
 
@@ -372,24 +386,38 @@ function DetailModal({
         {p.notes && <p className="detail-notes">{p.notes}</p>}
 
         {canAssign ? (
-          <label>
-            Who is it for?
-            <select
-              value={assignedChildId ?? ''}
-              disabled={saving}
-              onChange={(e) => assign(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">— No one —</option>
-              {children.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <span className="hint">
-              Colors and filters this imported event. For a repeating event, it applies to the whole series.
-            </span>
-          </label>
+          <>
+            <label>
+              Who is it for?
+              <select
+                value={assignedChildId ?? ''}
+                disabled={saving}
+                onChange={(e) => assign(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">— No one —</option>
+                {children.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <span className="hint">
+                Colors and filters this imported event. For a repeating event, it applies to the whole series.
+              </span>
+            </label>
+
+            <label>
+              Note {noteSaved && <span className="hint">· saved ✓</span>}
+              <textarea
+                value={note}
+                rows={2}
+                placeholder="Add a note for the family (e.g. bring cleats)"
+                onChange={(e) => setNote(e.target.value)}
+                onBlur={saveNote}
+              />
+              <span className="hint">Shared with everyone and included in the weekly email. Saved automatically.</span>
+            </label>
+          </>
         ) : (
           p.childName && (
             <p>

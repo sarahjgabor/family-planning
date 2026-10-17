@@ -130,3 +130,30 @@ feedsRouter.put('/:id/assign', (req, res) => {
   ).run(feedId, uid, childId);
   res.json({ ok: true });
 });
+
+// Add (or clear) a household note on a single imported event. Keyed by the
+// event's iCal UID so it survives feed re-syncs, like the child assignment.
+const noteSchema = z.object({
+  uid: z.string().min(1),
+  note: z.string().trim().max(2000).nullable(),
+});
+
+feedsRouter.put('/:id/note', (req, res) => {
+  const feedId = Number(req.params.id);
+  const parsed = noteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid note' });
+    return;
+  }
+  const feed = db.prepare('SELECT id FROM feeds WHERE id = ?').get(feedId);
+  if (!feed) {
+    res.status(404).json({ error: 'Calendar not found' });
+    return;
+  }
+  const note = parsed.data.note || null;
+  db.prepare(
+    `INSERT INTO feed_event_assignments (feed_id, uid, note) VALUES (?, ?, ?)
+     ON CONFLICT(feed_id, uid) DO UPDATE SET note = excluded.note`,
+  ).run(feedId, parsed.data.uid, note);
+  res.json({ ok: true });
+});

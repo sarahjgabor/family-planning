@@ -121,6 +121,7 @@ export function migrate(): void {
       feed_id  INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
       uid      TEXT NOT NULL,
       child_id INTEGER REFERENCES children(id) ON DELETE CASCADE,
+      note     TEXT,
       UNIQUE(feed_id, uid)
     );
 
@@ -172,6 +173,7 @@ export function migrate(): void {
   ensureColumn('feeds', 'google_calendar_id', 'TEXT');
   ensureColumn('feeds', 'google_account_id', 'INTEGER');
   ensureColumn('feeds', 'error_notified', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('feed_event_assignments', 'note', 'TEXT');
   ensureColumn('users', 'is_admin', 'INTEGER NOT NULL DEFAULT 0');
 
   // Ensure there's an account owner (admin). If none is set yet, promote the
