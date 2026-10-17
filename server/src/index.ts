@@ -18,6 +18,7 @@ import { usersRouter } from './routes/users.js';
 import { syncAllFeeds } from './feeds/sync.js';
 import { startDigestScheduler } from './digest/scheduler.js';
 import { startReminderScheduler } from './push/reminders.js';
+import { privacyHtml, termsHtml } from './legal.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +39,10 @@ app.use('/api/google', googleRouter);
 app.use('/api/push', pushRouter);
 app.use('/api/reminders', remindersRouter);
 app.use('/api/users', usersRouter);
+
+// Public legal pages (required to publish the Google OAuth app).
+app.get('/privacy', (_req, res) => res.type('html').send(privacyHtml));
+app.get('/terms', (_req, res) => res.type('html').send(termsHtml));
 
 // Serve the built web app in production. The frontend is a single-page app,
 // so any non-API route falls back to index.html.
